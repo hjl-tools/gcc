@@ -1,0 +1,22 @@
+-mschedule=CPU:
+
+CPU is the name of one of any scheduling models.  It is used to select
+CPU scheduling model, like
+
+$ gcc -O2 -mschedule=nehalem -S ...
+
+-mcost=COST:
+
+1. Modify cost.c to create a new cost model.
+2. Compile cost.c into cost.so:
+
+$ gcc -o cost.so -shared -fPIC -O2 -g cost.c
+
+3. Use -mcost=cost to load new cost numbers from cost.so with
+
+$ export LD_LIBRARY_PATH=directory with cost.so
+$ gcc -O2 -mcost=cost -S ...
+
+Also cost model for any processors can be selected with -mcost=cpu:
+
+$ gcc -O2 -mcost=i386 -S ...

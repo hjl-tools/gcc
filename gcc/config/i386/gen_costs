@@ -1,0 +1,16 @@
+#! /bin/bash
+
+costs=$(grep processor_costs x86-tune-costs.h | sed "s/.*processor_costs \(.*\) = .*/\1/" | sort)
+
+cat <<EOF
+      if (strcmp (x86_cost_string, "size") == 0)
+	ix86_cost = &ix86_size_cost;
+EOF
+
+for c in $costs; do
+  p=$(echo $c | sed -e "s/_cost//")
+  cat <<EOF
+      else if (strcmp (x86_cost_string, "$p") == 0)
+	ix86_cost = &$c;
+EOF
+done

@@ -1,0 +1,20 @@
+#! /bin/bash
+
+cpus=$(sed -n '/define_attr "cpu"/,$p' i386.md \
+       | sed '/ix86_schedule/,$d' \
+       | sed -e 's/.*define_attr "cpu"//' -e 's/"//g' \
+       | tr -d '\n')
+cpus=$(echo $cpus | sed -e "s/,/ /g")
+
+cat <<EOF
+      if (strcmp (x86_schedule_string, "none") == 0)
+	ix86_schedule = CPU_NONE;
+EOF
+
+for c in $cpus; do
+  [ $c != "none" ] || continue
+  cat <<EOF
+      else if (strcmp (x86_schedule_string, "$c") == 0)
+	ix86_schedule = CPU_$(echo $c | tr [:lower:] [:upper:]);
+EOF
+done
