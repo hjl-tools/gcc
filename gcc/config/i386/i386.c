@@ -4012,7 +4012,7 @@ ix86_option_override_internal (bool main_args_p,
 	ix86_tune = processor_alias_table[i].processor;
 	if (TARGET_64BIT_P (opts->x_ix86_isa_flags))
 	  {
-	    if (!((processor_alias_table[i].flags & PTA_64BIT) != 0))
+	    if (0 && !((processor_alias_table[i].flags & PTA_64BIT) != 0))
 	      {
 		if (ix86_tune_defaulted)
 		  {
@@ -4131,6 +4131,8 @@ ix86_option_override_internal (bool main_args_p,
     ix86_cost = &ix86_size_cost;
   else
     ix86_cost = ix86_tune_cost;
+
+  x86_tune_options ();
 
   /* Arrange to set up i386_stack_locals for all functions.  */
   init_machine_status = ix86_init_machine_status;
@@ -51904,6 +51906,8 @@ ix86_run_selftests (void)
 #undef TARGET_RUN_TARGET_SELFTESTS
 #define TARGET_RUN_TARGET_SELFTESTS selftest::ix86_run_selftests
 #endif /* #if CHECKING_P */
+
+#include "config/i386/i386-tune.c"
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
