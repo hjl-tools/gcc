@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <unwind.h>
