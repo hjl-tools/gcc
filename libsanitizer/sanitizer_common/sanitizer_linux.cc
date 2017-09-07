@@ -599,8 +599,7 @@ uptr internal_prctl(int option, uptr arg2, uptr arg3, uptr arg4, uptr arg5) {
   return internal_syscall(__NR_prctl, option, arg2, arg3, arg4, arg5);
 }
 
-uptr internal_sigaltstack(const struct sigaltstack *ss,
-                         struct sigaltstack *oss) {
+uptr internal_sigaltstack(const void *ss, void *oss) {
   return internal_syscall(__NR_sigaltstack, (uptr)ss, (uptr)oss);
 }
 

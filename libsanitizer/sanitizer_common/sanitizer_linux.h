@@ -18,7 +18,6 @@
 #include "sanitizer_platform_limits_posix.h"
 
 struct link_map;  // Opaque type returned by dlopen().
-struct sigaltstack;
 
 namespace __sanitizer {
 // Dirent structure for getdents(). Note that this structure is different from
@@ -28,8 +27,7 @@ struct linux_dirent;
 // Syscall wrappers.
 uptr internal_getdents(fd_t fd, struct linux_dirent *dirp, unsigned int count);
 uptr internal_prctl(int option, uptr arg2, uptr arg3, uptr arg4, uptr arg5);
-uptr internal_sigaltstack(const struct sigaltstack* ss,
-                          struct sigaltstack* oss);
+uptr internal_sigaltstack(const void* ss, void* oss);
 uptr internal_sigaction(int signum, const __sanitizer_kernel_sigaction_t *act,
     __sanitizer_kernel_sigaction_t *oldact);
 uptr internal_sigprocmask(int how, __sanitizer_kernel_sigset_t *set,
