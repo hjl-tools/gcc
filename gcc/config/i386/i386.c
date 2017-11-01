@@ -10962,6 +10962,145 @@ ix86_setup_frame_addresses (void)
 # endif
 #endif
 
+static int indirectlabelno;
+static bool indirect_thunk_needed = false;
+static bool indirect_thunk_bnd_needed = false;
+
+#ifndef INDIRECT_LABEL
+# define INDIRECT_LABEL "LIND"
+#endif
+
+/* Fills in the label name that should be used for the indirect thunk.  */
+
+static void
+indirect_thunk_name (char name[32], bool need_bnd_p)
+{
+  if (USE_HIDDEN_LINKONCE)
+    {
+      const char *bnd = need_bnd_p ? "_bnd" : "";
+      sprintf (name, "__x86.indirect_thunk%s", bnd);
+    }
+  else
+    {
+      if (need_bnd_p)
+	ASM_GENERATE_INTERNAL_LABEL (name, "LITB", 0);
+      else
+	ASM_GENERATE_INTERNAL_LABEL (name, "LIT", 0);
+    }
+}
+
+static void
+output_indirect_thunk (bool need_bnd_p)
+{
+  char indirectlabel1[32];
+  char indirectlabel2[32];
+
+  ASM_GENERATE_INTERNAL_LABEL (indirectlabel1, INDIRECT_LABEL,
+			       indirectlabelno++);
+  ASM_GENERATE_INTERNAL_LABEL (indirectlabel2, INDIRECT_LABEL,
+			       indirectlabelno++);
+
+  /* Call */
+  if (need_bnd_p)
+    fputs ("\tbnd call\t", asm_out_file);
+  else
+    fputs ("\tcall\t", asm_out_file);
+  assemble_name_raw (asm_out_file, indirectlabel2);
+  fputc ('\n', asm_out_file);
+
+  ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel1);
+
+  /* lfence .  */
+  fprintf (asm_out_file, "\tlfence\n");
+
+  /* Jump.  */
+  fputs ("\tjmp\t", asm_out_file);
+  assemble_name_raw (asm_out_file, indirectlabel1);
+  fputc ('\n', asm_out_file);
+
+  ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
+
+  /* LEA.  */
+  rtx xops[2];
+  xops[0] = stack_pointer_rtx;
+  xops[1] = plus_constant (Pmode, stack_pointer_rtx, UNITS_PER_WORD);
+  output_asm_insn ("lea\t{%E1, %0|%0, %E1}", xops);
+
+  if (need_bnd_p)
+    fputs ("\tbnd ret\n", asm_out_file);
+  else
+    fputs ("\tret\n", asm_out_file);
+}
+
+static void
+output_indirect_thunk_function (bool need_bnd_p)
+{
+  char name[32];
+  tree decl;
+
+  indirect_thunk_name (name, need_bnd_p);
+  decl = build_decl (BUILTINS_LOCATION, FUNCTION_DECL,
+		     get_identifier (name),
+		     build_function_type_list (void_type_node, NULL_TREE));
+  DECL_RESULT (decl) = build_decl (BUILTINS_LOCATION, RESULT_DECL,
+				   NULL_TREE, void_type_node);
+  TREE_PUBLIC (decl) = 1;
+  TREE_STATIC (decl) = 1;
+  DECL_IGNORED_P (decl) = 1;
+
+#if TARGET_MACHO
+  if (TARGET_MACHO)
+    {
+      switch_to_section (darwin_sections[picbase_thunk_section]);
+      fputs ("\t.weak_definition\t", asm_out_file);
+      assemble_name (asm_out_file, name);
+      fputs ("\n\t.private_extern\t", asm_out_file);
+      assemble_name (asm_out_file, name);
+      putc ('\n', asm_out_file);
+      ASM_OUTPUT_LABEL (asm_out_file, name);
+      DECL_WEAK (decl) = 1;
+    }
+  else
+#endif
+    if (USE_HIDDEN_LINKONCE)
+      {
+	cgraph_node::create (decl)->set_comdat_group (DECL_ASSEMBLER_NAME (decl));
+
+	targetm.asm_out.unique_section (decl, 0);
+	switch_to_section (get_named_section (decl, NULL, 0));
+
+	targetm.asm_out.globalize_label (asm_out_file, name);
+	fputs ("\t.hidden\t", asm_out_file);
+	assemble_name (asm_out_file, name);
+	putc ('\n', asm_out_file);
+	ASM_DECLARE_FUNCTION_NAME (asm_out_file, name, decl);
+      }
+    else
+      {
+	switch_to_section (text_section);
+	ASM_OUTPUT_LABEL (asm_out_file, name);
+      }
+
+  DECL_INITIAL (decl) = make_node (BLOCK);
+  current_function_decl = decl;
+  allocate_struct_function (decl, false);
+  init_function_start (decl);
+  /* We're about to hide the function body from callees of final_* by
+     emitting it directly; tell them we're a thunk, if they care.  */
+  cfun->is_thunk = true;
+  first_function_block_is_cold = false;
+  /* Make sure unwind info is emitted for the thunk if needed.  */
+  final_start_function (emit_barrier (), asm_out_file, 1);
+
+  output_indirect_thunk (need_bnd_p);
+
+  final_end_function ();
+  init_insn_lengths ();
+  free_after_compilation (cfun);
+  set_cfun (NULL);
+  current_function_decl = NULL;
+}
+
 static int pic_labels_used;
 
 /* Fills in the label name that should be used for a pc thunk for
@@ -10987,6 +11126,11 @@ ix86_code_end (void)
 {
   rtx xops[2];
   int regno;
+
+  if (indirect_thunk_needed)
+    output_indirect_thunk_function (false);
+  if (indirect_thunk_bnd_needed)
+    output_indirect_thunk_function (true);
 
   for (regno = AX_REG; regno <= SP_REG; regno++)
     {
@@ -27367,12 +27511,132 @@ ix86_nopic_noplt_attribute_p (rtx call_op)
   return false;
 }
 
+static void
+ix86_output_indirect_branch (rtx call_op, const char *xasm,
+			     bool sibcall_p)
+{
+  char thunk_name[32];
+  char push_buf[64];
+  bool need_bnd_p = ix86_bnd_prefixed_insn_p (current_output_insn);
+
+  bool need_thunk = ix86_indirect_branch == indirect_branch_thunk;
+  if (need_bnd_p)
+    indirect_thunk_bnd_needed |= need_thunk;
+  else
+    indirect_thunk_needed |= need_thunk;
+  indirect_thunk_name (thunk_name, need_bnd_p);
+
+  snprintf (push_buf, sizeof (push_buf), "push{%c}\t%s",
+	    TARGET_64BIT ? 'q' : 'l', xasm);
+
+  if (sibcall_p)
+    {
+      output_asm_insn (push_buf, &call_op);
+      if (thunk_name != NULL)
+	{
+	  if (need_bnd_p)
+	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
+	  else
+	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
+	}
+      else
+	output_indirect_thunk (need_bnd_p);
+    }
+  else
+    {
+      char indirectlabel1[32];
+      char indirectlabel2[32];
+
+      ASM_GENERATE_INTERNAL_LABEL (indirectlabel1,
+				   INDIRECT_LABEL,
+				   indirectlabelno++);
+      ASM_GENERATE_INTERNAL_LABEL (indirectlabel2,
+				   INDIRECT_LABEL,
+				   indirectlabelno++);
+
+      /* Jump.  */
+      if (need_bnd_p)
+	fputs ("\tbnd jmp\t", asm_out_file);
+      else
+	fputs ("\tjmp\t", asm_out_file);
+      assemble_name_raw (asm_out_file, indirectlabel2);
+      fputc ('\n', asm_out_file);
+
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel1);
+
+      if (MEM_P (call_op))
+	{
+	  struct ix86_address parts;
+	  rtx addr = XEXP (call_op, 0);
+	  if (ix86_decompose_address (addr, &parts)
+	      && parts.base == stack_pointer_rtx)
+	    {
+	      /* Since call will adjust stack by -UNITS_PER_WORD,
+		 we must convert "disp(stack, index, scale)" to
+		 "disp+UNITS_PER_WORD(stack, index, scale)".  */
+	      if (parts.index)
+		{
+		  addr = gen_rtx_MULT (Pmode, parts.index,
+				       GEN_INT (parts.scale));
+		  addr = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+				       addr);
+		}
+	      else
+		addr = stack_pointer_rtx;
+
+	      rtx disp;
+	      if (parts.disp != NULL_RTX)
+		disp = plus_constant (Pmode, parts.disp,
+				      UNITS_PER_WORD);
+	      else
+		disp = GEN_INT (UNITS_PER_WORD);
+
+	      addr = gen_rtx_PLUS (Pmode, addr, disp);
+	      call_op = gen_rtx_MEM (GET_MODE (call_op), addr);
+	    }
+	}
+
+      output_asm_insn (push_buf, &call_op);
+
+      if (need_bnd_p)
+	fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
+      else
+	fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
+
+      ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
+
+      /* Call.  */
+      if (need_bnd_p)
+	fputs ("\tbnd call\t", asm_out_file);
+      else
+	fputs ("\tcall\t", asm_out_file);
+      assemble_name_raw (asm_out_file, indirectlabel1);
+      fputc ('\n', asm_out_file);
+    }
+}
+
+const char *
+ix86_output_indirect_jmp (rtx call_op)
+{
+  if (ix86_red_zone_size == 0
+      && ix86_indirect_branch != indirect_branch_keep)
+    {
+      ix86_output_indirect_branch (call_op, "%0", true);
+      return "";
+    }
+  else
+    return "%!jmp\t%A0";
+}
+
 /* Output the assembly for a call instruction.  */
 
 const char *
 ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 {
   bool direct_p = constant_call_address_operand (call_op, VOIDmode);
+  bool output_indirect_p
+    = (!TARGET_SEH
+       && ix86_indirect_branch != indirect_branch_keep);
   bool seh_nop_p = false;
   const char *xasm;
 
@@ -27381,7 +27645,13 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
       if (direct_p)
 	{
 	  if (ix86_nopic_noplt_attribute_p (call_op))
-	    xasm = "%!jmp\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	    {
+	      direct_p = false;
+	      if (output_indirect_p)
+		xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	      else
+		xasm = "%!jmp\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	    }
 	  else
 	    xasm = "%!jmp\t%P0";
 	}
@@ -27390,9 +27660,17 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
       else if (TARGET_SEH)
 	xasm = "%!rex.W jmp\t%A0";
       else
-	xasm = "%!jmp\t%A0";
+	{
+	  if (output_indirect_p)
+	    xasm = "%0";
+	  else
+	    xasm = "%!jmp\t%A0";
+	}
 
-      output_asm_insn (xasm, &call_op);
+      if (output_indirect_p && !direct_p)
+	ix86_output_indirect_branch (call_op, xasm, true);
+      else
+	output_asm_insn (xasm, &call_op);
       return "";
     }
 
@@ -27429,14 +27707,28 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
   if (direct_p)
     {
       if (ix86_nopic_noplt_attribute_p (call_op))
-	xasm = "%!call\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	{
+	  direct_p = false;
+	  if (output_indirect_p)
+	    xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	  else
+	    xasm = "%!call\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
+	}
       else
 	xasm = "%!call\t%P0";
     }
   else
-    xasm = "%!call\t%A0";
+    {
+      if (output_indirect_p)
+	xasm = "%0";
+      else
+	xasm = "%!call\t%A0";
+    }
 
-  output_asm_insn (xasm, &call_op);
+  if (output_indirect_p && !direct_p)
+    ix86_output_indirect_branch (call_op, xasm, false);
+  else
+    output_asm_insn (xasm, &call_op);
 
   if (seh_nop_p)
     return "nop";
