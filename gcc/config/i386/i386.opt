@@ -911,3 +911,6 @@ Enum(indirect_branch) String(keep) Value(indirect_branch_keep)
 
 EnumValue
 Enum(indirect_branch) String(thunk) Value(indirect_branch_thunk)
+
+EnumValue
+Enum(indirect_branch) String(thunk-inline) Value(indirect_branch_thunk_inline)

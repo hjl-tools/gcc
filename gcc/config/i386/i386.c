@@ -27515,16 +27515,23 @@ static void
 ix86_output_indirect_branch (rtx call_op, const char *xasm,
 			     bool sibcall_p)
 {
-  char thunk_name[32];
+  char thunk_name_buf[32];
+  char *thunk_name;
   char push_buf[64];
   bool need_bnd_p = ix86_bnd_prefixed_insn_p (current_output_insn);
 
-  bool need_thunk = ix86_indirect_branch == indirect_branch_thunk;
-  if (need_bnd_p)
-    indirect_thunk_bnd_needed |= need_thunk;
+  if (ix86_indirect_branch != indirect_branch_thunk_inline)
+    {
+      bool need_thunk = ix86_indirect_branch == indirect_branch_thunk;
+      if (need_bnd_p)
+	indirect_thunk_bnd_needed |= need_thunk;
+      else
+	indirect_thunk_needed |= need_thunk;
+      indirect_thunk_name (thunk_name_buf, need_bnd_p);
+      thunk_name = thunk_name_buf;
+    }
   else
-    indirect_thunk_needed |= need_thunk;
-  indirect_thunk_name (thunk_name, need_bnd_p);
+    thunk_name = NULL;
 
   snprintf (push_buf, sizeof (push_buf), "push{%c}\t%s",
 	    TARGET_64BIT ? 'q' : 'l', xasm);
@@ -27598,10 +27605,15 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 
       output_asm_insn (push_buf, &call_op);
 
-      if (need_bnd_p)
-	fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
+      if (thunk_name != NULL)
+	{
+	  if (need_bnd_p)
+	    fprintf (asm_out_file, "\tbnd jmp\t%s\n", thunk_name);
+	  else
+	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
+	}
       else
-	fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
+	output_indirect_thunk (need_bnd_p);
 
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
