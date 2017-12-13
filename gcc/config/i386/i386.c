@@ -3662,12 +3662,19 @@ make_pass_stv (gcc::context *ctxt)
   return new pass_stv (ctxt);
 }
 
-/* Return true if a red-zone is in use.  */
+/* Return true if a red-zone is in use.  We can't use red-zone when
+   there are local indirect jumps, like "indirect_jump" or "tablejump",
+   which jumps to another place in the function, since "call" in the
+   indirect thunk pushes the return address onto stack, destroying
+   red-zone.  */
 
 bool
 ix86_using_red_zone (void)
 {
-  return TARGET_RED_ZONE && !TARGET_64BIT_MS_ABI;
+  return (TARGET_RED_ZONE
+	  && !TARGET_64BIT_MS_ABI
+	  && (!cfun->machine->has_local_indirect_jump
+	      || cfun->machine->indirect_branch_type == indirect_branch_keep));
 }
 
 /* Return a string that documents the current -m options.  The caller is
@@ -27838,11 +27845,16 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 }
 
 const char *
-ix86_output_indirect_jmp (rtx call_op)
+ix86_output_indirect_jmp (rtx call_op, bool ret_p)
 {
-  if (ix86_red_zone_size == 0
-      && cfun->machine->indirect_branch_type != indirect_branch_keep)
+  if (cfun->machine->indirect_branch_type != indirect_branch_keep)
     {
+      /* We can't have red-zone if this isn't a function return since
+	 "call" in the indirect thunk pushes the return address onto
+	 stack, destroying red-zone.  */
+      if (!ret_p && ix86_red_zone_size != 0)
+	gcc_unreachable ();
+
       ix86_output_indirect_branch (call_op, "%0", true);
       return "";
     }
