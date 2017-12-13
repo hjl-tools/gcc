@@ -12,7 +12,7 @@ male_indirect_jump (long offset)
 }
 
 /* { dg-final { scan-assembler "push(?:l|q)\[ \t\]*_?dispatch" { target { ! x32 } } } } */
-/* { dg-final { scan-assembler "pushq\[ \t\]%rax" { target x32 } } } */
 /* { dg-final { scan-assembler "jmp\[ \t\]*\.LIND" } } */
 /* { dg-final { scan-assembler "call\[ \t\]*\.LIND" } } */
 /* { dg-final { scan-assembler-not "__x86.indirect_thunk" } } */
+/* { dg-final { scan-assembler-not "pushq\[ \t\]%rax" { target x32 } } } */

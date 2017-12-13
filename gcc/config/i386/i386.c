@@ -11005,6 +11005,9 @@ static int indirectlabelno;
 static bool indirect_thunk_needed = false;
 static bool indirect_thunk_bnd_needed = false;
 
+static int indirect_thunks_used;
+static int indirect_thunks_bnd_used;
+
 #ifndef INDIRECT_LABEL
 # define INDIRECT_LABEL "LIND"
 #endif
@@ -11012,24 +11015,45 @@ static bool indirect_thunk_bnd_needed = false;
 /* Fills in the label name that should be used for the indirect thunk.  */
 
 static void
-indirect_thunk_name (char name[32], bool need_bnd_p)
+indirect_thunk_name (char name[32], int regno, bool need_bnd_p)
 {
   if (USE_HIDDEN_LINKONCE)
     {
       const char *bnd = need_bnd_p ? "_bnd" : "";
-      sprintf (name, "__x86.indirect_thunk%s", bnd);
+      if (regno >= 0)
+	{
+	  const char *reg_prefix;
+	  if (LEGACY_INT_REGNO_P (regno))
+	    reg_prefix = TARGET_64BIT ? "r" : "e";
+	  else
+	    reg_prefix = "";
+	  sprintf (name, "__x86.indirect_thunk%s.%s%s",
+		   bnd, reg_prefix, reg_names[regno]);
+	}
+      else
+	sprintf (name, "__x86.indirect_thunk%s", bnd);
     }
   else
     {
-      if (need_bnd_p)
-	ASM_GENERATE_INTERNAL_LABEL (name, "LITB", 0);
+      if (regno >= 0)
+	{
+	  if (need_bnd_p)
+	    ASM_GENERATE_INTERNAL_LABEL (name, "LITBR", regno);
+	  else
+	    ASM_GENERATE_INTERNAL_LABEL (name, "LITR", regno);
+	}
       else
-	ASM_GENERATE_INTERNAL_LABEL (name, "LIT", 0);
+	{
+	  if (need_bnd_p)
+	    ASM_GENERATE_INTERNAL_LABEL (name, "LITB", 0);
+	  else
+	    ASM_GENERATE_INTERNAL_LABEL (name, "LIT", 0);
+	}
     }
 }
 
 static void
-output_indirect_thunk (bool need_bnd_p)
+output_indirect_thunk (bool need_bnd_p, int regno)
 {
   char indirectlabel1[32];
   char indirectlabel2[32];
@@ -11059,11 +11083,22 @@ output_indirect_thunk (bool need_bnd_p)
 
   ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
-  /* LEA.  */
-  rtx xops[2];
-  xops[0] = stack_pointer_rtx;
-  xops[1] = plus_constant (Pmode, stack_pointer_rtx, UNITS_PER_WORD);
-  output_asm_insn ("lea\t{%E1, %0|%0, %E1}", xops);
+  if (regno >= 0)
+    {
+      /* MOV.  */
+      rtx xops[2];
+      xops[0] = gen_rtx_MEM (word_mode, stack_pointer_rtx);
+      xops[1] = gen_rtx_REG (word_mode, regno);
+      output_asm_insn ("mov\t{%1, %0|%0, %1}", xops);
+    }
+  else
+    {
+      /* LEA.  */
+      rtx xops[2];
+      xops[0] = stack_pointer_rtx;
+      xops[1] = plus_constant (Pmode, stack_pointer_rtx, UNITS_PER_WORD);
+      output_asm_insn ("lea\t{%E1, %0|%0, %E1}", xops);
+    }
 
   if (need_bnd_p)
     fputs ("\tbnd ret\n", asm_out_file);
@@ -11072,12 +11107,13 @@ output_indirect_thunk (bool need_bnd_p)
 }
 
 static void
-output_indirect_thunk_function (bool need_bnd_p)
+output_indirect_thunk_function (bool need_bnd_p, int regno)
 {
   char name[32];
   tree decl;
 
-  indirect_thunk_name (name, need_bnd_p);
+  /* Create __x86.indirect_thunk/__x86.indirect_thunk_bnd.  */
+  indirect_thunk_name (name, regno, need_bnd_p);
   decl = build_decl (BUILTINS_LOCATION, FUNCTION_DECL,
 		     get_identifier (name),
 		     build_function_type_list (void_type_node, NULL_TREE));
@@ -11131,7 +11167,7 @@ output_indirect_thunk_function (bool need_bnd_p)
   /* Make sure unwind info is emitted for the thunk if needed.  */
   final_start_function (emit_barrier (), asm_out_file, 1);
 
-  output_indirect_thunk (need_bnd_p);
+  output_indirect_thunk (need_bnd_p, regno);
 
   final_end_function ();
   init_insn_lengths ();
@@ -11167,14 +11203,30 @@ ix86_code_end (void)
   int regno;
 
   if (indirect_thunk_needed)
-    output_indirect_thunk_function (false);
+    output_indirect_thunk_function (false, -1);
   if (indirect_thunk_bnd_needed)
-    output_indirect_thunk_function (true);
+    output_indirect_thunk_function (true, -1);
+
+  for (regno = FIRST_REX_INT_REG; regno <= LAST_REX_INT_REG; regno++)
+    {
+      int i = regno - FIRST_REX_INT_REG + LAST_INT_REG + 1;
+      if ((indirect_thunks_used & (1 << i)))
+	output_indirect_thunk_function (false, regno);
+
+      if ((indirect_thunks_bnd_used & (1 << i)))
+	output_indirect_thunk_function (true, regno);
+    }
 
   for (regno = AX_REG; regno <= SP_REG; regno++)
     {
       char name[32];
       tree decl;
+
+      if ((indirect_thunks_used & (1 << regno)))
+	output_indirect_thunk_function (false, regno);
+
+      if ((indirect_thunks_bnd_used & (1 << regno)))
+	output_indirect_thunk_function (true, regno);
 
       if (!(pic_labels_used & (1 << regno)))
 	continue;
@@ -27558,17 +27610,37 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
   char *thunk_name;
   char push_buf[64];
   bool need_bnd_p = ix86_bnd_prefixed_insn_p (current_output_insn);
+  int regno;
+
+  if (REG_P (call_op))
+    regno = REGNO (call_op);
+  else
+    regno = -1;
 
   if (cfun->machine->indirect_branch_type
       != indirect_branch_thunk_inline)
     {
-      bool need_thunk
-	= cfun->machine->indirect_branch_type == indirect_branch_thunk;
-      if (need_bnd_p)
-	indirect_thunk_bnd_needed |= need_thunk;
-      else
-	indirect_thunk_needed |= need_thunk;
-      indirect_thunk_name (thunk_name_buf, need_bnd_p);
+      if (cfun->machine->indirect_branch_type == indirect_branch_thunk)
+	{
+	  if (regno >= 0)
+	    {
+	      int i = regno;
+	      if (i >= FIRST_REX_INT_REG)
+		i -= (FIRST_REX_INT_REG - LAST_INT_REG - 1);
+	      if (need_bnd_p)
+		indirect_thunks_bnd_used |= 1 << i;
+	      else
+		indirect_thunks_used |= 1 << i;
+	    }
+	  else
+	    {
+	      if (need_bnd_p)
+		indirect_thunk_bnd_needed = true;
+	      else
+		indirect_thunk_needed = true;
+	    }
+	}
+      indirect_thunk_name (thunk_name_buf, regno, need_bnd_p);
       thunk_name = thunk_name_buf;
     }
   else
@@ -27579,7 +27651,8 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 
   if (sibcall_p)
     {
-      output_asm_insn (push_buf, &call_op);
+      if (regno < 0)
+	output_asm_insn (push_buf, &call_op);
       if (thunk_name != NULL)
 	{
 	  if (need_bnd_p)
@@ -27588,10 +27661,19 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
 	}
       else
-	output_indirect_thunk (need_bnd_p);
+	output_indirect_thunk (need_bnd_p, regno);
     }
   else
     {
+      if (regno >= 0 && thunk_name != NULL)
+	{
+	  if (need_bnd_p)
+	    fprintf (asm_out_file, "\tbnd call\t%s\n", thunk_name);
+	  else
+	    fprintf (asm_out_file, "\tcall\t%s\n", thunk_name);
+	  return;
+	}
+
       char indirectlabel1[32];
       char indirectlabel2[32];
 
@@ -27644,7 +27726,8 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 	    }
 	}
 
-      output_asm_insn (push_buf, &call_op);
+      if (regno < 0)
+	output_asm_insn (push_buf, &call_op);
 
       if (thunk_name != NULL)
 	{
@@ -27654,7 +27737,7 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 	    fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
 	}
       else
-	output_indirect_thunk (need_bnd_p);
+	output_indirect_thunk (need_bnd_p, regno);
 
       ASM_OUTPUT_INTERNAL_LABEL (asm_out_file, indirectlabel2);
 
