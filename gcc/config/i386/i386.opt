@@ -626,3 +626,23 @@ Split 32-byte AVX unaligned store
 mrtm
 Target Report Mask(ISA_RTM) Var(ix86_isa_flags) Save
 Support RTM built-in functions and code generation
+
+mindirect-branch=
+Target Report RejectNegative Joined Enum(indirect_branch) Var(ix86_indirect_branch) Init(indirect_branch_keep)
+Convert indirect call and jump to call and return thunks.
+
+Enum
+Name(indirect_branch) Type(enum indirect_branch)
+Known indirect branch choices (for use with the -mindirect-branch= option):
+
+EnumValue
+Enum(indirect_branch) String(keep) Value(indirect_branch_keep)
+
+EnumValue
+Enum(indirect_branch) String(thunk) Value(indirect_branch_thunk)
+
+EnumValue
+Enum(indirect_branch) String(thunk-inline) Value(indirect_branch_thunk_inline)
+
+EnumValue
+Enum(indirect_branch) String(thunk-extern) Value(indirect_branch_thunk_extern)
