@@ -26900,6 +26900,10 @@ Note that @option{-mcmodel=large} is incompatible with
 @option{-mindirect-branch=thunk-extern} since the thunk function may
 not be reachable in large code model.
 
+Note that @option{-mindirect-branch=} is incompatible with
+@option{-mshstk} since call and return thunk changes call stack
+without updating shadow stack.
+
 @item -mfunction-return=@var{choice}
 @opindex -mfunction-return
 Convert function return with @var{choice}.  The default is @samp{keep},
@@ -26916,6 +26920,9 @@ Note that @option{-mcmodel=large} is incompatible with
 @option{-mfunction-return=thunk-extern} since the thunk function may
 not be reachable in large code model.
 
+Note that @option{-mfunction-return=} is incompatible with
+@option{-mshstk} since call and return thunk changes call stack
+without updating shadow stack.
 
 @item -mindirect-branch-register
 @opindex -mindirect-branch-register
