@@ -611,6 +611,7 @@ glibcxx_toolexeclibdir
 glibcxx_toolexecdir
 gxx_include_dir
 glibcxx_prefixdir
+CET_LDFLAGS
 EXTRA_CFLAGS
 CPU_OPT_BITS_RANDOM
 CPU_OPT_EXT_RANDOM
@@ -900,6 +901,7 @@ with_default_libstdcxx_abi
 enable_libstdcxx_threads
 enable_libstdcxx_filesystem_ts
 enable_cet
+enable_cet_property
 with_gxx_include_dir
 enable_version_specific_runtime_libs
 with_gcc_major_version_only
@@ -1599,6 +1601,8 @@ Optional Features:
   --enable-libstdcxx-filesystem-ts
                           turns on ISO/IEC TS 18822 support [default=auto]
   --enable-cet            enable Intel CET in target libraries [default=no]
+  --enable-cet-property   enable Intel CET property in target libraries
+                          [default=no]
   --enable-version-specific-runtime-libs
                           Specify that runtime libraries should be installed
                           in a compiler-specific directory
@@ -11606,7 +11610,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11609 "configure"
+#line 11613 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -11712,7 +11716,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11715 "configure"
+#line 11719 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -15398,7 +15402,7 @@ $as_echo "$glibcxx_cv_atomic_long_long" >&6; }
   # Fake what AC_TRY_COMPILE does.
 
     cat > conftest.$ac_ext << EOF
-#line 15401 "configure"
+#line 15405 "configure"
 int main()
 {
   typedef bool atomic_type;
@@ -15433,7 +15437,7 @@ $as_echo "$glibcxx_cv_atomic_bool" >&6; }
     rm -f conftest*
 
     cat > conftest.$ac_ext << EOF
-#line 15436 "configure"
+#line 15440 "configure"
 int main()
 {
   typedef short atomic_type;
@@ -15468,7 +15472,7 @@ $as_echo "$glibcxx_cv_atomic_short" >&6; }
     rm -f conftest*
 
     cat > conftest.$ac_ext << EOF
-#line 15471 "configure"
+#line 15475 "configure"
 int main()
 {
   // NB: _Atomic_word not necessarily int.
@@ -15504,7 +15508,7 @@ $as_echo "$glibcxx_cv_atomic_int" >&6; }
     rm -f conftest*
 
     cat > conftest.$ac_ext << EOF
-#line 15507 "configure"
+#line 15511 "configure"
 int main()
 {
   typedef long long atomic_type;
@@ -15585,7 +15589,7 @@ $as_echo "$as_me: WARNING: Performance of certain classes will degrade as a resu
   # unnecessary for this test.
 
     cat > conftest.$ac_ext << EOF
-#line 15588 "configure"
+#line 15592 "configure"
 int main()
 {
   _Decimal32 d1;
@@ -15627,7 +15631,7 @@ ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
   # unnecessary for this test.
 
     cat > conftest.$ac_ext << EOF
-#line 15630 "configure"
+#line 15634 "configure"
 template<typename T1, typename T2>
   struct same
   { typedef T2 type; };
@@ -15661,7 +15665,7 @@ $as_echo "$enable_int128" >&6; }
     rm -f conftest*
 
     cat > conftest.$ac_ext << EOF
-#line 15664 "configure"
+#line 15668 "configure"
 template<typename T1, typename T2>
   struct same
   { typedef T2 type; };
@@ -81224,6 +81228,37 @@ fi
 
 EXTRA_CXX_FLAGS="$EXTRA_CXX_FLAGS $CET_FLAGS"
 EXTRA_CFLAGS="$EXTRA_CFLAGS $CET_FLAGS"
+
+
+ # Check whether --enable-cet-property was given.
+if test "${enable_cet_property+set}" = set; then :
+  enableval=$enable_cet_property;
+      case "$enableval" in
+       yes|no|default) ;;
+       *) as_fn_error "Unknown argument to enable/disable cet-property" "$LINENO" 5 ;;
+                          esac
+
+else
+  enable_cet_property=no
+fi
+
+
+case "$host" in
+  i[34567]86-*-linux* | x86_64-*-linux*)
+    if test x$enable_cet_property = xyes; then
+      # Check if CET is enabled.
+      if test x$enable_cet != xyes; then
+	as_fn_error "CET must be enabled for --enable-cet-property" "$LINENO" 5
+      fi
+    fi
+    ;;
+  *)
+    enable_cet_property=no
+    ;;
+esac
+if test x$enable_cet_property = xyes; then
+  CET_LDFLAGS="-Wl,-z,ibt,-z,shstk"
+fi
 
 
 
