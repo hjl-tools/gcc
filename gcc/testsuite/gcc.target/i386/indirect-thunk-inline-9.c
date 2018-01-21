@@ -1,5 +1,5 @@
 /* { dg-do compile { target *-*-linux* } } */
-/* { dg-options "-O2 -mno-indirect-branch-register -mfunction-return=keep -fpic -fno-plt -mindirect-branch=thunk-inline" } */
+/* { dg-options "-O2 -mno-indirect-branch-register -mfunction-return=keep -fno-pic -fno-plt -mindirect-branch=thunk-inline" } */
 
 extern void bar (void);
 
@@ -10,7 +10,8 @@ foo (void)
   return 0;
 }
 
-/* { dg-final { scan-assembler "mov(?:l|q)\[ \t\]*bar@GOT" } } */
+/* { dg-final { scan-assembler "movl\[ \t\]*bar@GOT" { target ia32 } } } */
+/* { dg-final { scan-assembler "mov(l|q)\[ \t\]*bar@GOTPCREL" { target { ! ia32 } } } } */
 /* { dg-final { scan-assembler-times "jmp\[ \t\]*\.LIND" 2 } } */
 /* { dg-final { scan-assembler-times "call\[ \t\]*\.LIND" 2 } } */
 /* { dg-final { scan-assembler-times {\tpause} 1 } } */

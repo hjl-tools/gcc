@@ -28575,6 +28575,36 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 	      fnaddr = gen_rtx_MEM (QImode, fnaddr);
 	    }
 	}
+      else if ((TARGET_64BIT || HAVE_AS_IX86_GOT32X)
+	       && !TARGET_PECOFF
+	       && !TARGET_MACHO
+	       && (cfun->machine->indirect_branch_type
+		   != indirect_branch_keep)
+	       && !flag_pic
+	       && GET_CODE (addr) == SYMBOL_REF
+	       && SYMBOL_REF_FUNCTION_P (addr)
+	       && !SYMBOL_REF_LOCAL_P (addr)
+	       && (!flag_plt
+		   || (SYMBOL_REF_DECL (addr) != NULL_TREE
+		       && lookup_attribute ("noplt",
+					    DECL_ATTRIBUTES (SYMBOL_REF_DECL (addr))))))
+	{
+	  /* For -fno-pic -mindirect-branch= without PLT, call external
+	     function via GOT slot.  */
+	  fnaddr = gen_rtx_UNSPEC (Pmode, gen_rtvec (1, addr),
+				   (TARGET_64BIT
+				    ? UNSPEC_GOTPCREL
+				    : UNSPEC_GOT));
+	  fnaddr = gen_rtx_CONST (Pmode, fnaddr);
+	  fnaddr = gen_const_mem (Pmode, fnaddr);
+	  /* Pmode may not be the same as word_mode for x32, which
+	     doesn't support indirect branch via 32-bit memory slot.
+	     Since x32 GOT slot is 64 bit with zero upper 32 bits,
+	     indirect branch via x32 GOT slot is OK.  */
+	  if (GET_MODE (fnaddr) != word_mode)
+	    fnaddr = gen_rtx_ZERO_EXTEND (word_mode, fnaddr);
+	  fnaddr = gen_rtx_MEM (QImode, fnaddr);
+	}
     }
 
   /* Skip setting up RAX register for -mskip-rax-setup when there are no
@@ -28589,24 +28619,29 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
       use_reg (&use, al);
     }
 
+  bool call_via_got = false;
+
   if (ix86_cmodel == CM_LARGE_PIC
       && !TARGET_PECOFF
       && MEM_P (fnaddr)
       && GET_CODE (XEXP (fnaddr, 0)) == SYMBOL_REF
       && !local_symbolic_operand (XEXP (fnaddr, 0), VOIDmode))
     fnaddr = gen_rtx_MEM (QImode, construct_plt_address (XEXP (fnaddr, 0)));
-  /* Since x32 GOT slot is 64 bit with zero upper 32 bits, indirect
-     branch via x32 GOT slot is OK.  */
-  else if (!(TARGET_X32
-	     && MEM_P (fnaddr)
-	     && GET_CODE (XEXP (fnaddr, 0)) == ZERO_EXTEND
-	     && GOT_memory_operand (XEXP (XEXP (fnaddr, 0), 0), Pmode))
-	   && (sibcall
-	       ? !sibcall_insn_operand (XEXP (fnaddr, 0), word_mode)
-	       : !call_insn_operand (XEXP (fnaddr, 0), word_mode)))
+  else
     {
-      fnaddr = convert_to_mode (word_mode, XEXP (fnaddr, 0), 1);
-      fnaddr = gen_rtx_MEM (QImode, copy_to_mode_reg (word_mode, fnaddr));
+      call_via_got = (TARGET_64BIT
+		      && MEM_P (fnaddr)
+		      && GOT_memory_operand (XEXP (fnaddr, 0), Pmode));
+
+      if (!call_via_got
+	  && (sibcall
+	      ? !sibcall_insn_operand (XEXP (fnaddr, 0), word_mode)
+	      : !call_insn_operand (XEXP (fnaddr, 0), word_mode)))
+	{
+	  fnaddr = convert_to_mode (word_mode, XEXP (fnaddr, 0), 1);
+	  fnaddr = gen_rtx_MEM (QImode, copy_to_mode_reg (word_mode,
+							  fnaddr));
+	}
     }
 
   call = gen_rtx_CALL (VOIDmode, fnaddr, callarg1);
@@ -28643,6 +28678,16 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
       pop = gen_rtx_PLUS (Pmode, stack_pointer_rtx, pop);
       pop = gen_rtx_SET (stack_pointer_rtx, pop);
       vec[vec_len++] = pop;
+    }
+
+  if (call_via_got
+      && cfun->machine->indirect_branch_type != indirect_branch_keep)
+    {
+      /* For -mindirect-branch=, use a scratch register to call a
+	 function via GOT slot.  */
+      rtx clob = gen_rtx_CLOBBER (VOIDmode,
+				  gen_rtx_REG (DImode, R11_REG));
+      vec[vec_len++] = clob;
     }
 
   if (cfun->machine->no_caller_saved_registers
@@ -28987,9 +29032,28 @@ ix86_output_indirect_branch_via_push (rtx call_op, const char *xasm,
    Branch is a tail call if SIBCALL_P is true.   */
 
 static void
-ix86_output_indirect_branch (rtx call_op, const char *xasm,
-			     bool sibcall_p)
+ix86_output_indirect_branch (rtx call_op, rtx scratch,
+			     const char *xasm, bool sibcall_p)
 {
+  if (MEM_P (call_op))
+    {
+      if (!scratch)
+	gcc_unreachable ();
+
+      if (!GOT_memory_operand (call_op, word_mode))
+	gcc_unreachable ();
+
+      rtx xops[2];
+      xops[0] = scratch;
+      xops[1] = call_op;
+      call_op = xops[0];
+
+      if (GET_MODE (scratch) == DImode)
+	output_asm_insn ("mov{q}\t{%1, %0|%0, %1}", xops);
+      else
+	output_asm_insn ("mov{l}\t{%1, %0|%0, %1}", xops);
+    }
+
   if (REG_P (call_op))
     ix86_output_indirect_branch_via_reg (call_op, sibcall_p);
   else
@@ -29008,7 +29072,7 @@ ix86_output_indirect_jmp (rtx call_op)
       if (ix86_red_zone_size != 0)
 	gcc_unreachable ();
 
-      ix86_output_indirect_branch (call_op, "%0", true);
+      ix86_output_indirect_branch (call_op, NULL_RTX, "%0", true);
       return "";
     }
   else
@@ -29141,14 +29205,14 @@ ix86_split_simple_return_pop_internal (rtx popc)
 /* Output the assembly for a call instruction.  */
 
 const char *
-ix86_output_call_insn (rtx_insn *insn, rtx call_op)
+ix86_output_call_insn (rtx_insn *insn, rtx call_op, rtx scratch)
 {
   bool direct_p = constant_call_address_operand (call_op, VOIDmode);
   bool output_indirect_p
     = (!TARGET_SEH
        && cfun->machine->indirect_branch_type != indirect_branch_keep);
   bool seh_nop_p = false;
-  const char *xasm;
+  const char *xasm = NULL;
 
   if (SIBLING_CALL_P (insn))
     {
@@ -29159,9 +29223,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 	      direct_p = false;
 	      if (TARGET_64BIT)
 		{
-		  if (output_indirect_p)
-		    xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
-		  else
+		  if (!output_indirect_p)
 		    xasm = "%!jmp\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
 		}
 	      else
@@ -29188,7 +29250,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 	}
 
       if (output_indirect_p && !direct_p)
-	ix86_output_indirect_branch (call_op, xasm, true);
+	ix86_output_indirect_branch (call_op, scratch, xasm, true);
       else
 	output_asm_insn (xasm, &call_op);
       return "";
@@ -29239,9 +29301,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 	  direct_p = false;
 	  if (TARGET_64BIT)
 	    {
-	      if (output_indirect_p)
-		xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
-	      else
+	      if (!output_indirect_p)
 		xasm = "%!call\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
 	    }
 	  else
@@ -29264,7 +29324,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
     }
 
   if (output_indirect_p && !direct_p)
-    ix86_output_indirect_branch (call_op, xasm, false);
+    ix86_output_indirect_branch (call_op, scratch, xasm, false);
   else
     output_asm_insn (xasm, &call_op);
 

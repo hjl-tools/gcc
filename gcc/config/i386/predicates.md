@@ -693,11 +693,19 @@
   return false;
 })
 
-;; Return true if OP is a GOT memory operand.
+;; Return true if OP is a GOT memory operand.  NB: When OP is ZERO_EXTEND
+;; from SImode to DImode, "GET_MODE (OP) == MODE" is false.  Change MODE
+;; to VOIDmode to skip mode check.
 (define_predicate "GOT_memory_operand"
-  (match_operand 0 "memory_operand")
+  (match_test "(mode = VOIDmode) == VOIDmode")
 {
+  if (GET_CODE (op) == ZERO_EXTEND)
+    op = XEXP (op, 0);
+  if (!MEM_P (op))
+    return false;
   op = XEXP (op, 0);
+  /* Since x32 GOT slot is 64 bit with zero upper 32 bits, indirect
+     branch via x32 GOT slot is OK.  */
   return (GET_CODE (op) == CONST
 	  && GET_CODE (XEXP (op, 0)) == UNSPEC
 	  && XINT (XEXP (op, 0), 1) == UNSPEC_GOTPCREL);

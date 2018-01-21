@@ -12,7 +12,7 @@ foo (void)
 }
 
 /* { dg-final { scan-assembler "mov(?:l|q)\[ \t\]*bar@GOT" } } */
-/* { dg-final { scan-assembler "bnd call\[ \t\]*__x86_indirect_thunk_bnd_(r|e)ax" } } */
+/* { dg-final { scan-assembler "bnd call\[ \t\]*__x86_indirect_thunk_bnd_(r|e)" } } */
 /* { dg-final { scan-assembler-times "bnd call\[ \t\]*\.LIND" 1 } } */
 /* { dg-final { scan-assembler "bnd ret" } } */
 /* { dg-final { scan-assembler {\tpause} } } */
