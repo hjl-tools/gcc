@@ -28370,7 +28370,14 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 				    pic_offset_table_rtx);
 		}
 	    }
-	  else if (!TARGET_PECOFF && !TARGET_MACHO)
+	  /* In 64-bit mode, -mindirect-branch=thunk is treated as
+	     -fno-pic and ix86_output_indirect_branch will convert
+	     call via PLT to indirect branch via GOT slot.  */
+	  else if (!TARGET_PECOFF
+		   && !TARGET_MACHO
+		   && (!TARGET_64BIT
+		       || (cfun->machine->indirect_branch_type
+			   == indirect_branch_keep)))
 	    {
 	      if (TARGET_64BIT)
 		{
@@ -28543,7 +28550,7 @@ ix86_expand_call (rtx retval, rtx fnaddr, rtx callarg1,
 static bool
 ix86_nopic_noplt_attribute_p (rtx call_op)
 {
-  if (flag_pic || ix86_cmodel == CM_LARGE
+  if (ix86_cmodel == CM_LARGE
       || !(TARGET_64BIT || HAVE_AS_IX86_GOT32X)
       || TARGET_MACHO || TARGET_SEH || TARGET_PECOFF
       || SYMBOL_REF_LOCAL_P (call_op))
@@ -28551,10 +28558,16 @@ ix86_nopic_noplt_attribute_p (rtx call_op)
 
   tree symbol_decl = SYMBOL_REF_DECL (call_op);
 
+  /* In 64-bit mode, -mindirect-branch=thunk is treated as -fno-pic and
+     ix86_output_indirect_branch will convert call via PLT to indirect
+     branch via GOT slot.  */
   if (!flag_plt
       || (symbol_decl != NULL_TREE
           && lookup_attribute ("noplt", DECL_ATTRIBUTES (symbol_decl))))
-    return true;
+    return (!flag_pic
+	    || (TARGET_64BIT
+		&& (cfun->machine->indirect_branch_type
+		    != indirect_branch_keep)));
 
   return false;
 }
@@ -28810,11 +28823,49 @@ static void
 ix86_output_indirect_branch (rtx call_op, const char *xasm,
 			     bool sibcall_p)
 {
+  /* In 64-bit mode, convert function call via GOT:
+
+	[bnd] call/jmp *foo@GOTPCREL(%rip)
+
+     to
+
+	movq           foo@GOTPCREL(%rip), %r11
+	[bnd] call/jmp __x86_indirect_thunk_[bnd_]r11
+
+     with R11 as a scratch register.  */
+  if (TARGET_64BIT)
+    {
+      if (MEM_P (call_op)
+	  && GET_CODE (XEXP (call_op, 0)) == CONST
+	  && GET_CODE (XEXP (XEXP (call_op, 0), 0)) == UNSPEC
+	  && XINT (XEXP (XEXP (call_op, 0), 0), 1) == UNSPEC_GOTPCREL)
+	{
+	  rtx op = XVECEXP (XEXP (XEXP (call_op, 0), 0), 0, 0);
+	  if (GET_CODE (op) != SYMBOL_REF)
+	    gcc_unreachable ();
+	  xasm = NULL;
+	  call_op = op;
+	}
+
+      if (xasm == NULL)
+	{
+	  rtx xops[2];
+	  xops[0] = gen_rtx_REG (word_mode, R11_REG);
+	  xops[1] = call_op;
+	  char movq_buf[80];
+	  snprintf (movq_buf, sizeof (movq_buf), "movq\t%s",
+		    "{%p1@GOTPCREL(%%rip), %0|%0, [QWORD PTR %p1@GOTPCREL[rip]]}");
+	  output_asm_insn (movq_buf, xops);
+	  call_op = xops[0];
+	}
+    }
+
   if (REG_P (call_op))
     ix86_output_indirect_branch_via_reg (call_op, sibcall_p);
   else
     ix86_output_indirect_branch_via_push (call_op, xasm, sibcall_p);
 }
+
 /* Output indirect jump.  CALL_OP is the jump target.  Jump is a
    function return if RET_P is true.  */
 
@@ -28886,7 +28937,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
     = (!TARGET_SEH
        && cfun->machine->indirect_branch_type != indirect_branch_keep);
   bool seh_nop_p = false;
-  const char *xasm;
+  const char *xasm = NULL;
 
   if (SIBLING_CALL_P (insn))
     {
@@ -28897,9 +28948,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 	      direct_p = false;
 	      if (TARGET_64BIT)
 		{
-		  if (output_indirect_p)
-		    xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
-		  else
+		  if (!output_indirect_p)
 		    xasm = "%!jmp\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
 		}
 	      else
@@ -28969,9 +29018,7 @@ ix86_output_call_insn (rtx_insn *insn, rtx call_op)
 	  direct_p = false;
 	  if (TARGET_64BIT)
 	    {
-	      if (output_indirect_p)
-		xasm = "{%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
-	      else
+	      if (!output_indirect_p)
 		xasm = "%!call\t{*%p0@GOTPCREL(%%rip)|[QWORD PTR %p0@GOTPCREL[rip]]}";
 	    }
 	  else
