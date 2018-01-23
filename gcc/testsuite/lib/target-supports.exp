@@ -9315,3 +9315,54 @@ proc check_effective_target_cet { } {
 	}
     } "-O2" ]
 }
+
+# Return 1 if the x86 target supports R_X86_64_THUNK_GOTPCRELX relocation,
+# 0 otherwise.  Cache the result.
+
+proc check_effective_target_thunk_gotpcrelx_reloc { } {
+    global thunk_gotpcrelx_reloc_available_saved
+    global tool
+    global GCC_UNDER_TEST
+
+    if { !([istarget i?86-*-*] || [istarget x86_64-*-*]) } {
+	return 0
+    }
+
+    # Need auto-host.h to check linker support.
+    if { ![file exists ../../auto-host.h ] } {
+	return 0
+    }
+
+    if [info exists thunk_gotpcrelx_reloc_available_saved] {
+	verbose "check_effective_target_thunk_gotpcrelx_reloc returning saved $thunk_gotpcrelx_reloc_available_saved" 2
+    } else {
+	# Include the current process ID in the file names to prevent
+	# conflicts with invocations for multiple testsuites.
+
+	set src thunk_gotpcrelx[pid].c
+	set obj thunk_gotpcrelx[pid].o
+
+	set f [open $src "w"]
+	puts $f "#include \"../../auto-host.h\""
+	puts $f "#if HAVE_AS_IX86_THUNK_GOTPCRELX == 0"
+	puts $f "# error Assembler does not support R_X86_64_THUNK_GOTPCRELX."
+	puts $f "#endif"
+	close $f
+
+	verbose "check_effective_target_thunk_gotpcrelx_reloc compiling testfile $src" 2
+	set lines [${tool}_target_compile $src $obj object ""]
+
+	file delete $src
+	file delete $obj
+
+	if [string match "" $lines] then {
+	    verbose "check_effective_target_thunk_gotpcrelx_reloc testfile compilation passed" 2
+	    set thunk_gotpcrelx_reloc_available_saved 1
+	} else {
+	    verbose "check_effective_target_thunk_gotpcrelx_reloc testfile compilation failed" 2
+	    set thunk_gotpcrelx_reloc_available_saved 0
+	}
+    }
+
+    return $thunk_gotpcrelx_reloc_available_saved
+}

@@ -4383,6 +4383,29 @@ gd:
     AC_DEFINE_UNQUOTED(HAVE_AS_IX86_TLS_GET_ADDR_GOT,
       [`if test x"$gcc_cv_as_ix86_tls_get_addr_via_got" = xyes; then echo 1; else echo 0; fi`],
       [Define 0/1 if your assembler and linker support calling ___tls_get_addr via GOT.])
+
+    conftest_s='
+	.text
+	.global _start
+_start:
+	 movq _start@GOTPCREL_THUNK(%rip), %rax'
+    gcc_GAS_CHECK_FEATURE([R_X86_64_THUNK_GOTPCRELX reloc],
+        gcc_cv_as_ix86_thunk_gotpcrelx,,
+	[],
+	[$conftest_s],
+	[if test x$gcc_cv_ld != x && test x$gcc_cv_objdump != x \
+	    && test x$gcc_cv_readelf != x \
+	    && $gcc_cv_readelf --relocs --wide conftest.o 2>&1 \
+	       | grep R_X86_64_THUNK_GOTPCRELX > /dev/null 2>&1 \
+	    && $gcc_cv_ld -o conftest conftest.o > /dev/null 2>&1; then
+	   gcc_cv_as_ix86_thunk_gotpcrelx=yes
+	 else
+	   gcc_cv_as_ix86_thunk_gotpcrelx=no
+	 fi
+	 rm -f conftest])
+    AC_DEFINE_UNQUOTED(HAVE_AS_IX86_THUNK_GOTPCRELX,
+      [`if test x"$gcc_cv_as_ix86_thunk_gotpcrelx" = xyes; then echo 1; else echo 0; fi`],
+      [Define to 1 if your assembler and linker support @GOTPCREL_THUNK(%rip).])
     ;;
 
   ia64*-*-*)

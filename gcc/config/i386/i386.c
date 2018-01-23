@@ -28829,7 +28829,7 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 
      to
 
-	movq           foo@GOTPCREL(%rip), %r11
+	movq           foo@GOTPCREL_THUNK(%rip), %r11
 	[bnd] call/jmp __x86_indirect_thunk_[bnd_]r11
 
      with R11 as a scratch register.  */
@@ -28852,9 +28852,11 @@ ix86_output_indirect_branch (rtx call_op, const char *xasm,
 	  rtx xops[2];
 	  xops[0] = gen_rtx_REG (word_mode, R11_REG);
 	  xops[1] = call_op;
-	  char movq_buf[80];
+	  char movq_buf[128];
 	  snprintf (movq_buf, sizeof (movq_buf), "movq\t%s",
-		    "{%p1@GOTPCREL(%%rip), %0|%0, [QWORD PTR %p1@GOTPCREL[rip]]}");
+		    (HAVE_AS_IX86_THUNK_GOTPCRELX
+		     ? "{%p1@GOTPCREL_THUNK(%%rip), %0|%0, [QWORD PTR %p1@GOTPCREL_THUNK[rip]]}"
+		     : "{%p1@GOTPCREL(%%rip), %0|%0, [QWORD PTR %p1@GOTPCREL[rip]]}"));
 	  output_asm_insn (movq_buf, xops);
 	  call_op = xops[0];
 	}
