@@ -10879,6 +10879,11 @@ output_indirect_thunk (bool need_bnd_p, unsigned int regno)
 
   if (regno != INVALID_REGNUM)
     {
+      /* Hide the return address at the top of the stack.  */
+      if (flag_dwarf2_cfi_asm && flag_asynchronous_unwind_tables)
+	fprintf (asm_out_file, "\t.cfi_def_cfa_offset %d\n",
+		 2 * UNITS_PER_WORD);
+
       /* MOV.  */
       rtx xops[2];
       xops[0] = gen_rtx_MEM (word_mode, stack_pointer_rtx);
