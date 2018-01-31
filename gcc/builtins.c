@@ -840,6 +840,7 @@ expand_builtin_setjmp_setup (rtx buf_addr, rtx receiver_label)
   machine_mode sa_mode = STACK_SAVEAREA_MODE (SAVE_NONLOCAL);
   rtx stack_save;
   rtx mem;
+  rtx tmp;
 
   if (setjmp_alias_set == -1)
     setjmp_alias_set = new_alias_set ();
@@ -852,20 +853,25 @@ expand_builtin_setjmp_setup (rtx buf_addr, rtx receiver_label)
      the buffer and use the rest of it for the stack save area, which
      is machine-dependent.  */
 
-  mem = gen_rtx_MEM (Pmode, buf_addr);
+  mem = gen_rtx_MEM (ptr_mode, buf_addr);
   set_mem_alias_set (mem, setjmp_alias_set);
-  emit_move_insn (mem, targetm.builtin_setjmp_frame_value ());
+  tmp = targetm.builtin_setjmp_frame_value ();
+  if (GET_MODE (tmp) != ptr_mode)
+    tmp = gen_lowpart (ptr_mode, tmp);
+  emit_move_insn (mem, tmp);
 
-  mem = gen_rtx_MEM (Pmode, plus_constant (Pmode, buf_addr,
-					   GET_MODE_SIZE (Pmode))),
+  mem = gen_rtx_MEM (ptr_mode, plus_constant (Pmode, buf_addr,
+					      GET_MODE_SIZE (ptr_mode))),
   set_mem_alias_set (mem, setjmp_alias_set);
 
-  emit_move_insn (validize_mem (mem),
-		  force_reg (Pmode, gen_rtx_LABEL_REF (Pmode, receiver_label)));
+  tmp = force_reg (Pmode, gen_rtx_LABEL_REF (Pmode, receiver_label));
+  if (Pmode != ptr_mode)
+    tmp = gen_lowpart (ptr_mode, tmp);
+  emit_move_insn (validize_mem (mem), tmp);
 
   stack_save = gen_rtx_MEM (sa_mode,
 			    plus_constant (Pmode, buf_addr,
-					   2 * GET_MODE_SIZE (Pmode)));
+					   2 * GET_MODE_SIZE (ptr_mode)));
   set_mem_alias_set (stack_save, setjmp_alias_set);
   emit_stack_save (SAVE_NONLOCAL, &stack_save);
 
@@ -991,12 +997,14 @@ expand_builtin_longjmp (rtx buf_addr, rtx value)
     emit_insn (targetm.gen_builtin_longjmp (buf_addr));
   else
     {
-      fp = gen_rtx_MEM (Pmode, buf_addr);
-      lab = gen_rtx_MEM (Pmode, plus_constant (Pmode, buf_addr,
-					       GET_MODE_SIZE (Pmode)));
+      fp = gen_rtx_MEM (ptr_mode, buf_addr);
+      lab = gen_rtx_MEM (ptr_mode,
+			 plus_constant (Pmode, buf_addr,
+					GET_MODE_SIZE (ptr_mode)));
 
-      stack = gen_rtx_MEM (sa_mode, plus_constant (Pmode, buf_addr,
-						   2 * GET_MODE_SIZE (Pmode)));
+      stack = gen_rtx_MEM (sa_mode,
+			   plus_constant (Pmode, buf_addr,
+					  2 * GET_MODE_SIZE (ptr_mode)));
       set_mem_alias_set (fp, setjmp_alias_set);
       set_mem_alias_set (lab, setjmp_alias_set);
       set_mem_alias_set (stack, setjmp_alias_set);
@@ -1015,6 +1023,10 @@ expand_builtin_longjmp (rtx buf_addr, rtx value)
 	  emit_clobber (gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (VOIDmode)));
 	  emit_clobber (gen_rtx_MEM (BLKmode, hard_frame_pointer_rtx));
 
+#ifdef POINTERS_EXTEND_UNSIGNED
+	  if (GET_MODE (fp) != Pmode)
+	    fp = convert_to_mode (Pmode, fp, POINTERS_EXTEND_UNSIGNED);
+#endif
 	  emit_move_insn (hard_frame_pointer_rtx, fp);
 	  emit_stack_restore (SAVE_NONLOCAL, stack);
 

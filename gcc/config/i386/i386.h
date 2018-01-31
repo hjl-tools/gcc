@@ -1937,6 +1937,10 @@ do {							\
    between pointers and any other objects of this machine mode.  */
 #define Pmode (ix86_pmode == PMODE_DI ? DImode : SImode)
 
+/* Supply a definition of STACK_SAVEAREA_MODE for emit_stack_save.  We
+   only need save and restore stack pointer in ptr_mode.  */
+#define STACK_SAVEAREA_MODE(LEVEL) ptr_mode
+
 /* Specify the machine mode that bounds have.  */
 #define BNDmode (ix86_pmode == PMODE_DI ? BND64mode : BND32mode)
 
