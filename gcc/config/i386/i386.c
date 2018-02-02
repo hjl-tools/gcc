@@ -24316,12 +24316,12 @@ ix86_output_function_return (bool long_p)
 	{
 	  bool need_thunk = (cfun->machine->function_return_type
 			     == indirect_branch_thunk);
-	  indirect_thunk_name (thunk_name, -1, true);
+	  indirect_thunk_name (thunk_name, INVALID_REGNUM, true);
 	  indirect_thunk_needed |= need_thunk;
 	  fprintf (asm_out_file, "\tjmp\t%s\n", thunk_name);
 	}
       else
-	output_indirect_thunk (-1);
+	output_indirect_thunk (INVALID_REGNUM);
 
       return "";
     }
