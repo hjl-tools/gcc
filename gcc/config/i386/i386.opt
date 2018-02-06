@@ -1063,3 +1063,26 @@ Support WAITPKG built-in functions and code generation.
 mcldemote
 Target Report Mask(ISA_CLDEMOTE) Var(ix86_isa_flags2) Save
 Support CLDEMOTE built-in functions and code generation.
+
+mzero-caller-saved-regs=
+Target Report RejectNegative Joined Enum(zero_caller_saved_regs) Var(ix86_zero_caller_saved_regs) Init(zero_caller_saved_regs_skip)
+Clear caller-saved registers upon function return.
+
+Enum
+Name(zero_caller_saved_regs) Type(enum zero_caller_saved_regs)
+Known choices of clearing caller-saved registers upon function return (for use with the -mzero-caller-saved-regs= option):
+
+EnumValue
+Enum(zero_caller_saved_regs) String(skip) Value(zero_caller_saved_regs_skip)
+
+EnumValue
+Enum(zero_caller_saved_regs) String(used-gpr) Value(zero_caller_saved_regs_used_gpr)
+
+EnumValue
+Enum(zero_caller_saved_regs) String(all-gpr) Value(zero_caller_saved_regs_all_gpr)
+
+EnumValue
+Enum(zero_caller_saved_regs) String(used) Value(zero_caller_saved_regs_used)
+
+EnumValue
+Enum(zero_caller_saved_regs) String(all) Value(zero_caller_saved_regs_all)

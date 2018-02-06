@@ -2720,6 +2720,10 @@ struct GTY(()) machine_function {
      the "interrupt" or "no_caller_saved_registers" attribute.  */
   BOOL_BITFIELD no_caller_saved_registers : 1;
 
+  /* How to clear caller-saved general registers upon function
+     return.  */
+  ENUM_BITFIELD(zero_caller_saved_regs) zero_caller_saved_regs_type : 5;
+
   /* If true, there is register available for argument passing.  This
      is used only in ix86_function_ok_for_sibcall by 32-bit to determine
      if there is scratch register available for indirect sibcall.  In
@@ -2746,6 +2750,12 @@ struct GTY(()) machine_function {
 
   /* If true, ENDBR is queued at function entrance.  */
   BOOL_BITFIELD endbr_queued_at_entrance : 1;
+
+  /* Integer registers live at exit.  */
+  unsigned int live_outgoing_int_regs;
+
+  /* Vector registers live at exit.  */
+  unsigned int live_outgoing_vector_regs;
 
   /* The largest alignment, in bytes, of stack slot actually used.  */
   unsigned int max_used_stack_alignment;
@@ -2845,6 +2855,12 @@ extern void debug_dispatch_window (int);
 #define TARGET_INDIRECT_BRANCH_REGISTER \
   (ix86_indirect_branch_register \
    || cfun->machine->indirect_branch_type != indirect_branch_keep)
+
+#define TARGET_POP_SCRATCH_REGISTER \
+  (TARGET_64BIT \
+   || (cfun->machine->zero_caller_saved_regs_type \
+       == zero_caller_saved_regs_skip) \
+   || cfun->machine->function_return_type == indirect_branch_keep)
 
 #define IX86_HLE_ACQUIRE (1 << 16)
 #define IX86_HLE_RELEASE (1 << 17)

@@ -119,4 +119,13 @@ enum indirect_branch {
   indirect_branch_thunk_extern
 };
 
+enum zero_caller_saved_regs {
+  zero_caller_saved_regs_unset = 0,
+  zero_caller_saved_regs_skip,
+  zero_caller_saved_regs_used_gpr,
+  zero_caller_saved_regs_all_gpr,
+  zero_caller_saved_regs_used,
+  zero_caller_saved_regs_all
+};
+
 #endif
