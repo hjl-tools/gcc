@@ -5561,6 +5561,40 @@ ix86_set_func_type (tree fndecl)
     }
 }
 
+/* Set the zero_caller_saved_regs_type field from the function FNDECL.  */
+
+static void
+ix86_set_zero_caller_saved_regs_type (tree fndecl)
+{
+  if (cfun->machine->zero_caller_saved_regs_type
+      == zero_caller_saved_regs_unset)
+    {
+      tree attr = lookup_attribute ("zero_caller_saved_regs",
+				    DECL_ATTRIBUTES (fndecl));
+      if (attr != NULL)
+	{
+	  tree args = TREE_VALUE (attr);
+	  if (args == NULL)
+	    gcc_unreachable ();
+	  tree cst = TREE_VALUE (args);
+	  if (strcmp (TREE_STRING_POINTER (cst), "skip") == 0)
+	    cfun->machine->zero_caller_saved_regs_type
+	      = zero_caller_saved_regs_skip;
+	  else if (strcmp (TREE_STRING_POINTER (cst), "used") == 0)
+	    cfun->machine->zero_caller_saved_regs_type
+	      = zero_caller_saved_regs_used;
+	  else if (strcmp (TREE_STRING_POINTER (cst), "all") == 0)
+	    cfun->machine->zero_caller_saved_regs_type
+	      = zero_caller_saved_regs_all;
+	  else
+	    gcc_unreachable ();
+	}
+      else
+	cfun->machine->zero_caller_saved_regs_type
+	  = ix86_zero_caller_saved_regs;
+    }
+}
+
 /* Set the indirect_branch_type field from the function FNDECL.  */
 
 static void
@@ -5661,6 +5695,7 @@ ix86_set_current_function (tree fndecl)
 	{
 	  ix86_set_func_type (fndecl);
 	  ix86_set_indirect_branch_type (fndecl);
+	  ix86_set_zero_caller_saved_regs_type (fndecl);
 	}
       return;
     }
@@ -5682,6 +5717,7 @@ ix86_set_current_function (tree fndecl)
 
   ix86_set_func_type (fndecl);
   ix86_set_indirect_branch_type (fndecl);
+  ix86_set_zero_caller_saved_regs_type (fndecl);
 
   tree new_tree = DECL_FUNCTION_SPECIFIC_TARGET (fndecl);
   if (new_tree == NULL_TREE)
@@ -13542,7 +13578,7 @@ ix86_expand_prologue (void)
       insn = emit_insn (gen_set_got (pic));
       RTX_FRAME_RELATED_P (insn) = 1;
       add_reg_note (insn, REG_CFA_FLUSH_QUEUE, NULL_RTX);
-      emit_insn (gen_prologue_use (pic));
+      emit_insn (gen_pro_epilogue_use (pic));
       /* Deleting already emmitted SET_GOT if exist and allocated to
 	 REAL_PIC_OFFSET_TABLE_REGNUM.  */
       ix86_elim_entry_set_got (pic);
@@ -13571,7 +13607,7 @@ ix86_expand_prologue (void)
      Further, prevent alloca modifications to the stack pointer from being
      combined with prologue modifications.  */
   if (TARGET_SEH)
-    emit_insn (gen_prologue_use (stack_pointer_rtx));
+    emit_insn (gen_pro_epilogue_use (stack_pointer_rtx));
 }
 
 /* Emit code to restore REG using a POP insn.  */
@@ -14289,7 +14325,7 @@ ix86_expand_epilogue (int style)
 	  emit_jump_insn (gen_simple_return_indirect_internal (ecx));
 	}
       else
-	emit_jump_insn (gen_simple_return_pop_internal (popc));
+	ix86_split_simple_return_internal (popc);
     }
   else if (!m->call_ms2sysv || !restore_stub_is_tail)
     {
@@ -14316,7 +14352,7 @@ ix86_expand_epilogue (int style)
 	  emit_jump_insn (gen_simple_return_indirect_internal (ecx));
 	}
       else
-	emit_jump_insn (gen_simple_return_internal ());
+	ix86_split_simple_return_internal (NULL_RTX);
     }
 
   /* Restore the state back to the state from the prologue,
@@ -28402,37 +28438,169 @@ ix86_output_indirect_function_return (rtx ret_op)
     return "%!jmp\t%A0";
 }
 
-/* Split simple return with popping POPC bytes from stack to indirect
-   branch with stack adjustment .  */
+/* Find general registers which are live at the exit of basic block BB
+   and set their corresponding bits in LIVE_OUTGOING_REGS.  */
+
+static void
+ix86_find_live_outgoing_regs (basic_block bb,
+			      unsigned int &live_outgoing_regs)
+{
+  bitmap live_out = df_get_live_out (bb);
+
+  bool zero_all = (cfun->machine->zero_caller_saved_regs_type
+		   == zero_caller_saved_regs_all);
+
+  unsigned int regno;
+
+  /* Check for live outgoing registers.  */
+  for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+    {
+      /* Only zero general registers.  */
+      if (!GENERAL_REGNO_P (regno))
+	continue;
+
+      int i = regno;
+      if (i >= FIRST_REX_INT_REG)
+	i -= (FIRST_REX_INT_REG - LAST_INT_REG - 1);
+
+      /* No need to check it again if it is live.  */
+      if ((live_outgoing_regs & (1 << i)))
+	continue;
+
+      /* A register is considered LIVE if
+	 1. It is a fixed register.
+	 2. If isn't a caller-saved register.
+	 3. If it is a live outgoing register.
+	 4. It is never used in the function and we don't zero all
+	    caller-saved registers.
+       */
+      if (fixed_regs[regno]
+	  || !call_used_regs[regno]
+	  || REGNO_REG_SET_P (live_out, regno)
+	  || (!zero_all && !df_regs_ever_live_p (regno)))
+	live_outgoing_regs |= 1 << i;
+    }
+}
+
+/* Split simple return with popping POPC bytes from stack, if POPC
+   isn't NULL_RTX, and zero caller-saved general registers if needed.
+   When popping POPC bytes from stack for -mfunction-return=, convert
+   return to indirect branch with stack adjustment.  */
 
 void
-ix86_split_simple_return_pop_internal (rtx popc)
+ix86_split_simple_return_internal (rtx popc)
 {
-  struct machine_function *m = cfun->machine;
-  rtx ecx = gen_rtx_REG (SImode, CX_REG);
-  rtx_insn *insn;
+  /* No need to zero caller-saved registers in main ().  Don't zero
+     caller-saved registers if __builtin_eh_return is called since it
+     isn't a normal function return.  */
+  if ((cfun->machine->zero_caller_saved_regs_type
+       != zero_caller_saved_regs_skip)
+      && !crtl->calls_eh_return
+      && cfun->machine->func_type == TYPE_NORMAL
+      && !MAIN_NAME_P (DECL_NAME (current_function_decl)))
+    {
+      unsigned int &live_outgoing_regs
+	= cfun->machine->live_outgoing_regs;
 
-  /* There is no "pascal" calling convention in any 64bit ABI.  */
-  gcc_assert (!TARGET_64BIT);
+      if (live_outgoing_regs == 0)
+	{
+	  edge e;
+	  edge_iterator ei;
 
-  insn = emit_insn (gen_pop (ecx));
-  m->fs.cfa_offset -= UNITS_PER_WORD;
-  m->fs.sp_offset -= UNITS_PER_WORD;
+	  /* ECX register is used for return with pop.  */
+	  if (popc != NULL_RTX
+	      && (cfun->machine->function_return_type
+		  != indirect_branch_keep))
+	    live_outgoing_regs = 1 << CX_REG;
 
-  rtx x = plus_constant (Pmode, stack_pointer_rtx, UNITS_PER_WORD);
-  x = gen_rtx_SET (stack_pointer_rtx, x);
-  add_reg_note (insn, REG_CFA_ADJUST_CFA, x);
-  add_reg_note (insn, REG_CFA_REGISTER, gen_rtx_SET (ecx, pc_rtx));
-  RTX_FRAME_RELATED_P (insn) = 1;
+	  FOR_EACH_EDGE (e, ei, EXIT_BLOCK_PTR_FOR_FN (cfun)->preds)
+	    {
+	      ix86_find_live_outgoing_regs (e->src,
+					    live_outgoing_regs);
+	    }
+	}
 
-  x = gen_rtx_PLUS (Pmode, stack_pointer_rtx, popc);
-  x = gen_rtx_SET (stack_pointer_rtx, x);
-  insn = emit_insn (x);
-  add_reg_note (insn, REG_CFA_ADJUST_CFA, x);
-  RTX_FRAME_RELATED_P (insn) = 1;
+      rtx zero = NULL_RTX;
 
-  /* Now return address is in ECX.  */
-  emit_jump_insn (gen_simple_return_indirect_internal (ecx));
+      unsigned int regno;
+
+      for (regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+	{
+	  if (!GENERAL_REGNO_P (regno))
+	    continue;
+
+	  int i = regno;
+	  if (i >= FIRST_REX_INT_REG)
+	    i -= (FIRST_REX_INT_REG - LAST_INT_REG - 1);
+	  if ((live_outgoing_regs & (1 << i)))
+	    continue;
+
+	  /* Zero out dead caller-saved register.  We only need to zero
+	     the lower 32 bits.  */
+	  rtx reg = gen_rtx_REG (SImode, regno);
+	  if (zero == NULL_RTX)
+	    {
+	      zero = reg;
+	      rtx tmp = gen_rtx_SET (reg, const0_rtx);
+	      if (!TARGET_USE_MOV0 || optimize_insn_for_size_p ())
+		{
+		  rtx clob = gen_rtx_CLOBBER (VOIDmode,
+					      gen_rtx_REG (CCmode,
+							   FLAGS_REG));
+		  tmp = gen_rtx_PARALLEL (VOIDmode, gen_rtvec (2,
+							       tmp,
+							       clob));
+		}
+	      emit_insn (tmp);
+	    }
+	  else
+	    emit_move_insn (reg, zero);
+
+	  /* Mark it in use  */
+	  emit_insn (gen_pro_epilogue_use (reg));
+	}
+    }
+
+  if (popc)
+    {
+      if (cfun->machine->function_return_type != indirect_branch_keep)
+	{
+	  struct machine_function *m = cfun->machine;
+	  rtx ecx = gen_rtx_REG (SImode, CX_REG);
+	  rtx_insn *insn;
+
+	  /* There is no "pascal" calling convention in any 64bit ABI.  */
+	  gcc_assert (!TARGET_64BIT);
+
+	  insn = emit_insn (gen_pop (ecx));
+	  m->fs.cfa_offset -= UNITS_PER_WORD;
+	  m->fs.sp_offset -= UNITS_PER_WORD;
+
+	  rtx x = plus_constant (Pmode, stack_pointer_rtx,
+				 UNITS_PER_WORD);
+	  x = gen_rtx_SET (stack_pointer_rtx, x);
+	  add_reg_note (insn, REG_CFA_ADJUST_CFA, x);
+	  add_reg_note (insn, REG_CFA_REGISTER,
+			gen_rtx_SET (ecx, pc_rtx));
+	  RTX_FRAME_RELATED_P (insn) = 1;
+
+	  x = gen_rtx_PLUS (Pmode, stack_pointer_rtx, popc);
+	  x = gen_rtx_SET (stack_pointer_rtx, x);
+	  insn = emit_insn (x);
+	  add_reg_note (insn, REG_CFA_ADJUST_CFA, copy_rtx (x));
+	  RTX_FRAME_RELATED_P (insn) = 1;
+
+	  /* Mark ECX in use  */
+	  emit_insn (gen_pro_epilogue_use (ecx));
+
+	  /* Now return address is in ECX.  */
+	  emit_jump_insn (gen_simple_return_indirect_internal (ecx));
+	}
+      else
+	emit_jump_insn (gen_simple_return_pop_internal_1 (popc));
+    }
+  else
+    emit_jump_insn (gen_simple_return_internal_1 ());
 }
 
 /* Output the assembly for a call instruction.  */
@@ -40798,6 +40966,27 @@ ix86_handle_fndecl_attribute (tree *node, tree name, tree args, int,
 	}
     }
 
+  if (is_attribute_p ("zero_caller_saved_regs", name))
+    {
+      tree cst = TREE_VALUE (args);
+      if (TREE_CODE (cst) != STRING_CST)
+	{
+	  warning (OPT_Wattributes,
+		   "%qE attribute requires a string constant argument",
+		   name);
+	  *no_add_attrs = true;
+	}
+      else if (strcmp (TREE_STRING_POINTER (cst), "skip") != 0
+	       && strcmp (TREE_STRING_POINTER (cst), "used") != 0
+	       && strcmp (TREE_STRING_POINTER (cst), "all") != 0)
+	{
+	  warning (OPT_Wattributes,
+		   "argument to %qE attribute is not (skip|used|all)",
+		   name);
+	  *no_add_attrs = true;
+	}
+    }
+
   return NULL_TREE;
 }
 
@@ -45099,6 +45288,8 @@ static const struct attribute_spec ix86_attribute_table[] =
     ix86_handle_fndecl_attribute, NULL },
   { "indirect_return", 0, 0, false, true, true, false,
     NULL, NULL },
+  { "zero_caller_saved_regs", 1, 1, true, false, false, false,
+    ix86_handle_fndecl_attribute, NULL },
 
   /* End element.  */
   { NULL, 0, 0, false, false, false, false, NULL, NULL }

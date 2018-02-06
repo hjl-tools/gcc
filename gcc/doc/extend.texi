@@ -5931,6 +5931,14 @@ The @code{indirect_return} attribute can be applied to a function,
 as well as variable or type of function pointer to inform the
 compiler that the function may return via indirect branch.
 
+@item zero_caller_saved_regs("@var{choice}")
+@cindex @code{zero_caller_saved_regs} function attribute, x86
+On x86 targets, the @code{zero_caller_saved_regs} attribute causes the
+compiler to zero caller-saved integer registers at function return with
+@var{choice}.  @samp{skip} doesn't zero caller-saved integer registers.
+@samp{used} zeros caller-saved integer registers which are used in
+function.  @samp{all} zeros all caller-saved integer registers.
+
 @end table
 
 On the x86, the inliner does not inline a

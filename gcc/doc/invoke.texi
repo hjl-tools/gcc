@@ -1307,7 +1307,7 @@ See RS/6000 and PowerPC Options.
 -mstack-protector-guard-symbol=@var{symbol} @gol
 -mgeneral-regs-only -mcall-ms2sysv-xlogues @gol
 -mindirect-branch=@var{choice} -mfunction-return=@var{choice} @gol
--mindirect-branch-register}
+-mindirect-branch-register -mzero-caller-saved-regs=@var{choice}}
 
 @emph{x86 Windows Options}
 @gccoptlist{-mconsole  -mcygwin  -mno-cygwin  -mdll @gol
@@ -28458,6 +28458,16 @@ not be reachable in the large code model.
 @item -mindirect-branch-register
 @opindex -mindirect-branch-register
 Force indirect call and jump via register.
+
+@item -mzero-caller-saved-regs=@var{choice}
+@opindex -mzero-caller-saved-regs
+Zero caller-saved integer registers at function return with @var{choice}.
+The default is @samp{skip}, which doesn't zero caller-saved integer
+registers.  @samp{used} zeros caller-saved integer registers which are
+used in function.  @samp{all} zeros all caller-saved integer registers.
+You can control this behavior for a specific function by using the
+function attribute @code{zero_caller_saved_regs}.
+@xref{Function Attributes}.
 
 @end table
 
