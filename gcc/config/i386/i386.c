@@ -872,6 +872,17 @@ static const struct processor_costs *processor_cost_table[PROCESSOR_max] =
   &znver1_cost,
 };
 
+/* Return true if RET is a return, simple_return or simple_return in
+   a PARALLEL.  */
+
+static bool
+ix86_any_return_p (rtx ret)
+{
+  return (ANY_RETURN_P (ret)
+	  || (GET_CODE (ret) == PARALLEL
+	      && GET_CODE (XVECEXP (ret, 0, 0)) == SIMPLE_RETURN));
+}
+
 static unsigned int
 rest_of_handle_insert_vzeroupper (void)
 {
@@ -2655,7 +2666,7 @@ rest_of_insert_endbranch (void)
 	  if (JUMP_P (insn) && flag_cet_switch)
 	    {
 	      rtx target = JUMP_LABEL (insn);
-	      if (target == NULL_RTX || ANY_RETURN_P (target))
+	      if (target == NULL_RTX || ix86_any_return_p (target))
 		continue;
 
 	      /* Check the jump is a switch table.  */
@@ -41593,7 +41604,7 @@ ix86_pad_returns (void)
       rtx_insn *prev;
       bool replace = false;
 
-      if (!JUMP_P (ret) || !ANY_RETURN_P (PATTERN (ret))
+      if (!JUMP_P (ret) || !ix86_any_return_p (PATTERN (ret))
 	  || optimize_bb_for_size_p (bb))
 	continue;
       for (prev = PREV_INSN (ret); prev; prev = PREV_INSN (prev))
@@ -41647,7 +41658,7 @@ ix86_count_insn_bb (basic_block bb)
     {
       /* Only happen in exit blocks.  */
       if (JUMP_P (insn)
-	  && ANY_RETURN_P (PATTERN (insn)))
+	  && ix86_any_return_p (PATTERN (insn)))
 	break;
 
       if (NONDEBUG_INSN_P (insn)
@@ -41720,7 +41731,7 @@ ix86_pad_short_function (void)
   FOR_EACH_EDGE (e, ei, EXIT_BLOCK_PTR_FOR_FN (cfun)->preds)
     {
       rtx_insn *ret = BB_END (e->src);
-      if (JUMP_P (ret) && ANY_RETURN_P (PATTERN (ret)))
+      if (JUMP_P (ret) && ix86_any_return_p (PATTERN (ret)))
 	{
 	  int insn_count = ix86_count_insn (e->src);
 
@@ -49003,7 +49014,7 @@ ix86_notrack_prefixed_insn_p (rtx insn)
   if (JUMP_P (insn) && !flag_cet_switch)
     {
       rtx target = JUMP_LABEL (insn);
-      if (target == NULL_RTX || ANY_RETURN_P (target))
+      if (target == NULL_RTX || ix86_any_return_p (target))
 	return false;
 
       /* Check the jump is a switch table.  */
