@@ -42,7 +42,7 @@ ACLOCAL_AMFLAGS = -I ./config -I ../config
 
 AM_CFLAGS = -fexceptions -fnon-call-exceptions \
 	$(SPLIT_STACK) $(WARN_CFLAGS) \
-	$(STRINGOPS_FLAG) $(HWCAP_CFLAGS) $(OSCFLAGS) \
+	$(STRINGOPS_FLAG) $(HWCAP_CFLAGS) $(OSCFLAGS) $(CET_FLAGS) \
 	-I $(srcdir)/../libgcc -I $(srcdir)/../libbacktrace \
 	-I $(MULTIBUILDTOP)../../gcc/include
 
@@ -656,7 +656,7 @@ s-syscall_arch: Makefile
 
 SYSINFO_FLAGS = \
 	$(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
-	$(CPPFLAGS) $(OSCFLAGS) -O
+	$(CPPFLAGS) $(OSCFLAGS) $(CET_FLAGS) -O
 
 gen-sysinfo.go: s-gen-sysinfo; @true
 s-gen-sysinfo: $(srcdir)/sysinfo.c config.h
@@ -783,7 +783,7 @@ $(libgolibbegin_a_OBJECTS): runtime.inc
 LTLDFLAGS = $(shell $(SHELL) $(top_srcdir)/../libtool-ldflags $(LDFLAGS))
 
 GOCFLAGS = $(CFLAGS)
-AM_GOCFLAGS = $(STRINGOPS_FLAG) $(GO_SPLIT_STACK)
+AM_GOCFLAGS = $(STRINGOPS_FLAG) $(GO_SPLIT_STACK) $(CET_FLAGS)
 GOCOMPILE = $(GOC) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_GOCFLAGS) $(GOCFLAGS)
 
 LTGOCOMPILE = $(LIBTOOL) --tag GO --mode=compile $(GOC) $(INCLUDES) \

@@ -75,7 +75,9 @@ DIST_COMMON = README $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(srcdir)/config.h.in $(srcdir)/../mkinstalldirs \
 	$(srcdir)/../depcomp
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/../config/depstand.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/../config/cet.m4 \
+	$(top_srcdir)/../config/depstand.m4 \
+	$(top_srcdir)/../config/enable.m4 \
 	$(top_srcdir)/../config/hwcaps.m4 \
 	$(top_srcdir)/../config/lead-dot.m4 \
 	$(top_srcdir)/../config/multi.m4 \
@@ -289,6 +291,7 @@ AWK = @AWK@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
 CC_FOR_BUILD = @CC_FOR_BUILD@
+CET_FLAGS = @CET_FLAGS@
 CFLAGS = @CFLAGS@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
@@ -451,7 +454,7 @@ AM_CPPFLAGS = -I $(srcdir)/runtime $(LIBFFIINCS) $(PTHREAD_CFLAGS)
 ACLOCAL_AMFLAGS = -I ./config -I ../config
 AM_CFLAGS = -fexceptions -fnon-call-exceptions \
 	$(SPLIT_STACK) $(WARN_CFLAGS) \
-	$(STRINGOPS_FLAG) $(HWCAP_CFLAGS) $(OSCFLAGS) \
+	$(STRINGOPS_FLAG) $(HWCAP_CFLAGS) $(OSCFLAGS) $(CET_FLAGS) \
 	-I $(srcdir)/../libgcc -I $(srcdir)/../libbacktrace \
 	-I $(MULTIBUILDTOP)../../gcc/include
 
@@ -817,7 +820,7 @@ GXX_INSTALL_NAME := $(shell echo g++|sed '$(program_transform_name)')
 @LIBGO_IS_LINUX_TRUE@syscall_epoll_file = epoll.go
 SYSINFO_FLAGS = \
 	$(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
-	$(CPPFLAGS) $(OSCFLAGS) -O
+	$(CPPFLAGS) $(OSCFLAGS) $(CET_FLAGS) -O
 
 @LIBGO_IS_LINUX_FALSE@syscall_lib_clone_lo = 
 @LIBGO_IS_LINUX_TRUE@syscall_lib_clone_lo = syscall/clone_linux.lo
@@ -872,7 +875,7 @@ libgotool_a_SOURCES =
 libgotool_a_DEPENDENCIES = $(addsuffix .lo,$(GOTOOL_PACKAGES))
 libgotool_a_LIBADD = $(addsuffix .o,$(GOTOOL_PACKAGES))
 LTLDFLAGS = $(shell $(SHELL) $(top_srcdir)/../libtool-ldflags $(LDFLAGS))
-AM_GOCFLAGS = $(STRINGOPS_FLAG) $(GO_SPLIT_STACK)
+AM_GOCFLAGS = $(STRINGOPS_FLAG) $(GO_SPLIT_STACK) $(CET_FLAGS)
 GOCOMPILE = $(GOC) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_GOCFLAGS) $(GOCFLAGS)
 LTGOCOMPILE = $(LIBTOOL) --tag GO --mode=compile $(GOC) $(INCLUDES) \
 	$(AM_GOCFLAGS) $(GOCFLAGS)

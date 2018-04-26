@@ -55,6 +55,10 @@ AC_SUBST(CC_FOR_BUILD)
 
 AC_PROG_AWK
 
+# Add CET specific flags if CET is enabled
+GCC_CET_FLAGS(CET_FLAGS)
+AC_SUBST(CET_FLAGS)
+
 WARN_FLAGS='-Wall -Wextra -Wwrite-strings -Wcast-qual'
 AC_SUBST(WARN_FLAGS)
 
