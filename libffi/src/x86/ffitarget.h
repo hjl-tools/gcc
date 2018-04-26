@@ -131,7 +131,15 @@ typedef enum ffi_abi {
 #define FFI_TYPE_MS_STRUCT       (FFI_TYPE_LAST + 4)
 
 #if defined (X86_64) || defined(X86_WIN64) || defined(X86_64_DARWIN)
-# define FFI_TRAMPOLINE_SIZE 24
+# if defined __ELF__ && defined __linux__
+/* 4 bytes of ENDBR64 + 7 bytes of LEA + 6 bytes of jmp + 7 bytes of NOP
+   + 8 bytes of pointer.  */
+#  define FFI_TRAMPOLINE_SIZE 32
+# else
+/* 7 bytes of LEA + 6 bytes of jmp + 3 bytes of NOP + 8 bytes of
+   pointer.  */
+#  define FFI_TRAMPOLINE_SIZE 24
+# endif
 # define FFI_NATIVE_RAW_API 0
 #else
 # define FFI_TRAMPOLINE_SIZE 12
