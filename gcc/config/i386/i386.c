@@ -12516,10 +12516,10 @@ ix86_minimum_incoming_stack_boundary (bool sibcall)
     incoming_stack_boundary = ix86_user_incoming_stack_boundary;
   /* In 32bit, use MIN_STACK_BOUNDARY for incoming stack boundary
      if -mstackrealign is used, it isn't used for sibcall check and
-     estimated stack alignment is 128bit.  */
+     estimated stack alignment > MIN_STACK_BOUNDARY.  */
   else if (!sibcall
 	   && ix86_force_align_arg_pointer
-	   && crtl->stack_alignment_estimated == 128)
+	   && crtl->stack_alignment_estimated > MIN_STACK_BOUNDARY)
     incoming_stack_boundary = MIN_STACK_BOUNDARY;
   else
     incoming_stack_boundary = ix86_default_incoming_stack_boundary;
