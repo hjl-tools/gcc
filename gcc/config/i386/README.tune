@@ -20,3 +20,18 @@ $ gcc -O2 -mcost=cost -S ...
 Also cost model for any processors can be selected with -mcost=cpu:
 
 $ gcc -O2 -mcost=i386 -S ...
+
+4.  There is an undocumented GCC command-line option, -mtune-ctrl=XXX.
+It can be used to turn on and off the tuning feature XXX. XXX is one of
+tuning options in x86-tune.def. -mtune-ctrl=XXX turns on XXX and
+-mtune-ctrl=^XXX turns off XXX. In case of X86_TUNE_USE_BT:
+
+/* X86_TUNE_USE_BT: Enable use of BT (bit test) instructions.  */
+DEF_TUNE (X86_TUNE_USE_BT, "use_bt",
+                            ^^^^^ This is XXX.
+          m_CORE_ALL | m_BONNELL | m_SILVERMONT | m_KNL | m_KNM | m_INTEL
+	  | m_LAKEMONT | m_AMD_MULTIPLE | m_GENERIC)
+
+Multiple tuning features can be specified, separated by comma:
+
+-mtune-ctrl=XXX1,^XXX2,...
