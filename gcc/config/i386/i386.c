@@ -2601,6 +2601,9 @@ rest_of_insert_endbranch (void)
 
   if (!lookup_attribute ("nocf_check",
 			 TYPE_ATTRIBUTES (TREE_TYPE (cfun->decl)))
+      && (!flag_manual_endbr
+	  || lookup_attribute ("cf_check",
+			       DECL_ATTRIBUTES (cfun->decl)))
       && !cgraph_node::get (cfun->decl)->only_called_directly_p ())
     {
       cet_eb = gen_nop_endbr ();
@@ -46078,6 +46081,8 @@ static const struct attribute_spec ix86_attribute_table[] =
   { "indirect_branch", 1, 1, true, false, false, false,
     ix86_handle_fndecl_attribute, NULL },
   { "function_return", 1, 1, true, false, false, false,
+    ix86_handle_fndecl_attribute, NULL },
+  { "cf_check", 0, 0, true, false, false, false,
     ix86_handle_fndecl_attribute, NULL },
 
   /* End element.  */
