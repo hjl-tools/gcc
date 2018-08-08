@@ -2610,6 +2610,10 @@ struct GTY(()) machine_function {
   /* Nonzero if the function places outgoing arguments on stack.  */
   BOOL_BITFIELD outgoing_args_on_stack : 1;
 
+  /* If true, replace hard frame pointer with stack pointer in debug
+     info.  */
+  BOOL_BITFIELD replace_fp_with_sp_in_debug_info : 1;
+
   /* The largest alignment, in bytes, of stack slot actually used.  */
   unsigned int max_used_stack_alignment;
 

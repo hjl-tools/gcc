@@ -14327,8 +14327,7 @@ based_loc_descr (rtx reg, poly_int64 offset,
 	{
 	  elim = strip_offset_and_add (elim, &offset);
 	  gcc_assert ((SUPPORTS_STACK_ALIGNMENT
-		       && (elim == hard_frame_pointer_rtx
-			   || elim == stack_pointer_rtx))
+		       && elim == stack_pointer_rtx)
 	              || elim == (frame_pointer_needed
 				  ? hard_frame_pointer_rtx
 				  : stack_pointer_rtx));
@@ -20515,8 +20514,7 @@ compute_frame_pointer_to_fb_displacement (poly_int64 offset)
      frame_pointer_fb_offset, we won't need one either.  */
   frame_pointer_fb_offset_valid
     = ((SUPPORTS_STACK_ALIGNMENT
-	&& (elim == hard_frame_pointer_rtx
-	    || elim == stack_pointer_rtx))
+	&& elim == stack_pointer_rtx)
        || elim == (frame_pointer_needed
 		   ? hard_frame_pointer_rtx
 		   : stack_pointer_rtx));

@@ -13161,6 +13161,11 @@ ix86_finalize_stack_frame_flags (void)
 	  df_compute_regs_ever_live (true);
 	  df_analyze ();
 
+	  /* Replace hard frame pointer with stack pointer in debug
+	     info.  */
+	  cfun->machine->replace_fp_with_sp_in_debug_info
+	    = debug_info_level > DINFO_LEVEL_NONE;
+
 	  if (flag_var_tracking)
 	    {
 	      /* Since frame pointer is no longer available, replace it with
@@ -41944,6 +41949,99 @@ ix86_seh_fixup_eh_fallthru (void)
     }
 }
 
+/* Help function for ix86_replace_fp_with_sp.  */
+
+static rtx
+ix86_replace_fp_with_sp_1 (rtx x)
+{
+  if (!x)
+    return x;
+
+  if (x == hard_frame_pointer_rtx)
+    return plus_constant (Pmode, stack_pointer_rtx, -UNITS_PER_WORD);
+
+  const char *fmt = GET_RTX_FORMAT (GET_CODE (x));
+  int i, j;
+  for (i = GET_RTX_LENGTH (GET_CODE (x)) - 1; i >= 0; i--)
+    {
+      if (fmt[i] == 'e')
+	XEXP (x, i) = ix86_replace_fp_with_sp_1 (XEXP (x, i));
+      else if (fmt[i] == 'E')
+	for (j = XVECLEN (x, i) - 1; j >= 0; j--)
+	  XVECEXP (x, i, j) = ix86_replace_fp_with_sp_1 (XVECEXP (x, i, j));
+    }
+
+  return x;
+}
+
+/* Replace hard frame pointer in debug info with stack pointer
+   - UNITS_PER_WORD.  */
+
+static void
+ix86_replace_fp_with_sp (void)
+{
+  if (flag_var_tracking)
+    {
+      rtx_insn *insn, *next;
+      rtx replace, note;
+      for (insn = get_insns (); insn; insn = next)
+	{
+	  next = NEXT_INSN (insn);
+	  if (NOTE_P (insn))
+	    {
+	      if (NOTE_KIND (insn) == NOTE_INSN_VAR_LOCATION)
+		{
+		  replace = PATTERN (insn);
+		  if (reg_mentioned_p (arg_pointer_rtx, replace))
+		    {
+		      replace = eliminate_regs (replace, VOIDmode,
+						NULL_RTX);
+		      if (reg_mentioned_p (hard_frame_pointer_rtx,
+					   replace))
+			{
+			  ix86_replace_fp_with_sp_1 (replace);
+			  PATTERN (insn) = replace;
+			}
+		    }
+		}
+	    }
+	  else if (CALL_P (insn))
+	    {
+	      note = find_reg_note (insn, REG_CALL_ARG_LOCATION,
+				    NULL_RTX);
+	      if (note && reg_mentioned_p (arg_pointer_rtx, note))
+		{
+		  replace = eliminate_regs (XEXP (note, 0), VOIDmode,
+					    NULL_RTX);
+		  if (reg_mentioned_p (hard_frame_pointer_rtx, replace))
+		    {
+		      ix86_replace_fp_with_sp_1 (replace);
+		      remove_note (insn, note);
+		      add_reg_note (insn, REG_CALL_ARG_LOCATION,
+				    replace);
+		    }
+		}
+	    }
+	}
+    }
+
+  for (tree arg = DECL_ARGUMENTS (current_function_decl);
+       arg;
+       arg = TREE_CHAIN (arg))
+    {
+      rtx incoming = DECL_INCOMING_RTL (arg);
+      if (reg_mentioned_p (arg_pointer_rtx, incoming))
+	{
+	  incoming = eliminate_regs (incoming, VOIDmode, NULL_RTX);
+	  if (reg_mentioned_p (hard_frame_pointer_rtx, incoming))
+	    {
+	      ix86_replace_fp_with_sp_1 (incoming);
+	      DECL_INCOMING_RTL (arg) = incoming;
+	    }
+	}
+    }
+}
+
 /* Implement machine specific optimizations.  We implement padding of returns
    for K8 CPUs and pass to avoid 4 jumps in the single 16 byte window.  */
 static void
@@ -41955,6 +42053,11 @@ ix86_reorg (void)
 
   if (TARGET_SEH && current_function_has_exception_handlers ())
     ix86_seh_fixup_eh_fallthru ();
+
+  /* Replace hard frame pointer in debug info with stack pointer
+     - UNITS_PER_WORD after the variable tracking pass.  */
+  if (cfun->machine->replace_fp_with_sp_in_debug_info)
+    ix86_replace_fp_with_sp ();
 
   if (optimize && optimize_function_for_speed_p (cfun))
     {
