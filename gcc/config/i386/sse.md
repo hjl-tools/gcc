@@ -15497,6 +15497,26 @@
    (set_attr "prefix" "orig,orig,maybe_evex")
    (set_attr "mode" "TI")])
 
+(define_insn "*sse4_1_<code>v8qiv8hi2<mask_name>"
+  [(set (match_operand:V8HI 0 "register_operand" "=Yr,*x,v")
+	(any_extend:V8HI
+	  (vec_select:V8QI
+	    (subreg:V16QI
+	      (vec_concat:V2DI
+	        (match_operand:DI 1 "nonimmediate_operand" "Yrm,*xm,vm")
+		(const_int 0)) 0)
+	    (parallel [(const_int 0) (const_int 1)
+		       (const_int 2) (const_int 3)
+		       (const_int 4) (const_int 5)
+		       (const_int 6) (const_int 7)]))))]
+  "TARGET_SSE4_1 && <mask_avx512bw_condition> && <mask_avx512vl_condition>"
+  "%vpmov<extsuffix>bw\t{%1, %0<mask_operand2>|%0<mask_operand2>, %q1}"
+  [(set_attr "isa" "noavx,noavx,avx")
+   (set_attr "type" "ssemov")
+   (set_attr "prefix_extra" "1")
+   (set_attr "prefix" "orig,orig,maybe_evex")
+   (set_attr "mode" "TI")])
+
 (define_insn "<mask_codefor>avx512f_<code>v16qiv16si2<mask_name>"
   [(set (match_operand:V16SI 0 "register_operand" "=v")
 	(any_extend:V16SI
@@ -15538,6 +15558,28 @@
    (set_attr "prefix" "orig,orig,maybe_evex")
    (set_attr "mode" "TI")])
 
+(define_insn "*sse4_1_<code>v4qiv4si2<mask_name>"
+  [(set (match_operand:V4SI 0 "register_operand" "=Yr,*x,v")
+	(any_extend:V4SI
+	  (vec_select:V4QI
+	    (subreg:V16QI
+	      (vec_merge:V4SI
+	        (vec_duplicate:V4SI
+		  (match_operand:SI 1 "nonimmediate_operand" "m,*m,m"))
+		(const_vector:V4SI
+		   [(const_int 0) (const_int 0)
+		    (const_int 0) (const_int 0)])
+		(const_int 1)) 0)
+	    (parallel [(const_int 0) (const_int 1)
+		       (const_int 2) (const_int 3)]))))]
+  "TARGET_SSE4_1 && <mask_avx512vl_condition>"
+  "%vpmov<extsuffix>bd\t{%1, %0<mask_operand2>|%0<mask_operand2>, %k1}"
+  [(set_attr "isa" "noavx,noavx,avx")
+   (set_attr "type" "ssemov")
+   (set_attr "prefix_extra" "1")
+   (set_attr "prefix" "orig,orig,maybe_evex")
+   (set_attr "mode" "TI")])
+
 (define_insn "avx512f_<code>v16hiv16si2<mask_name>"
   [(set (match_operand:V16SI 0 "register_operand" "=v")
 	(any_extend:V16SI
@@ -15564,6 +15606,24 @@
 	(any_extend:V4SI
 	  (vec_select:V4HI
 	    (match_operand:V8HI 1 "nonimmediate_operand" "Yrm,*xm,vm")
+	    (parallel [(const_int 0) (const_int 1)
+		       (const_int 2) (const_int 3)]))))]
+  "TARGET_SSE4_1 && <mask_avx512vl_condition>"
+  "%vpmov<extsuffix>wd\t{%1, %0<mask_operand2>|%0<mask_operand2>, %q1}"
+  [(set_attr "isa" "noavx,noavx,avx")
+   (set_attr "type" "ssemov")
+   (set_attr "prefix_extra" "1")
+   (set_attr "prefix" "orig,orig,maybe_evex")
+   (set_attr "mode" "TI")])
+
+(define_insn "*sse4_1_<code>v4hiv4si2<mask_name>"
+  [(set (match_operand:V4SI 0 "register_operand" "=Yr,*x,v")
+	(any_extend:V4SI
+	  (vec_select:V4HI
+	    (subreg:V8HI
+	      (vec_concat:V2DI
+		(match_operand:DI 1 "nonimmediate_operand" "Yrm,*xm,vm")
+		(const_int 0)) 0)
 	    (parallel [(const_int 0) (const_int 1)
 		       (const_int 2) (const_int 3)]))))]
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
@@ -15655,6 +15715,27 @@
    (set_attr "prefix" "orig,orig,maybe_evex")
    (set_attr "mode" "TI")])
 
+(define_insn "*sse4_1_<code>v2hiv2di2<mask_name>"
+  [(set (match_operand:V2DI 0 "register_operand" "=Yr,*x,v")
+	(any_extend:V2DI
+	  (vec_select:V2HI
+	    (subreg:V8HI
+	      (vec_merge:V4SI
+	        (vec_duplicate:V4SI
+	          (match_operand:SI 1 "nonimmediate_operand" "m,*m,m"))
+		(const_vector:V4SI
+		   [(const_int 0) (const_int 0)
+		    (const_int 0) (const_int 0)])
+		(const_int 1)) 0)
+	    (parallel [(const_int 0) (const_int 1)]))))]
+  "TARGET_SSE4_1 && <mask_avx512vl_condition>"
+  "%vpmov<extsuffix>wq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %k1}"
+  [(set_attr "isa" "noavx,noavx,avx")
+   (set_attr "type" "ssemov")
+   (set_attr "prefix_extra" "1")
+   (set_attr "prefix" "orig,orig,maybe_evex")
+   (set_attr "mode" "TI")])
+
 (define_insn "avx512f_<code>v8siv8di2<mask_name>"
   [(set (match_operand:V8DI 0 "register_operand" "=v")
 	(any_extend:V8DI
@@ -15681,6 +15762,23 @@
 	(any_extend:V2DI
 	  (vec_select:V2SI
 	    (match_operand:V4SI 1 "nonimmediate_operand" "Yrm,*xm,vm")
+	    (parallel [(const_int 0) (const_int 1)]))))]
+  "TARGET_SSE4_1 && <mask_avx512vl_condition>"
+  "%vpmov<extsuffix>dq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %q1}"
+  [(set_attr "isa" "noavx,noavx,avx")
+   (set_attr "type" "ssemov")
+   (set_attr "prefix_extra" "1")
+   (set_attr "prefix" "orig,orig,maybe_evex")
+   (set_attr "mode" "TI")])
+
+(define_insn "*sse4_1_<code>v2siv2di2<mask_name>"
+  [(set (match_operand:V2DI 0 "register_operand" "=Yr,*x,v")
+	(any_extend:V2DI
+	  (vec_select:V2SI
+	    (subreg:V4SI
+	      (vec_concat:V2DI
+		(match_operand:DI 1 "nonimmediate_operand" "Yrm,*xm,vm")
+		(const_int 0)) 0)
 	    (parallel [(const_int 0) (const_int 1)]))))]
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>dq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %q1}"
