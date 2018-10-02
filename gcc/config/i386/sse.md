@@ -304,6 +304,10 @@
 (define_mode_iterator VF_512
   [V16SF V8DF])
 
+(define_mode_iterator VF48_AVX512VL
+  [V16SF (V8SF "TARGET_AVX512VL") (V4SF "TARGET_AVX512VL")
+   V8DF  (V4DF "TARGET_AVX512VL") (V2DF "TARGET_AVX512VL")])
+
 (define_mode_iterator VI48_AVX512VL
   [V16SI (V8SI  "TARGET_AVX512VL") (V4SI  "TARGET_AVX512VL")
    V8DI  (V4DI  "TARGET_AVX512VL") (V2DI  "TARGET_AVX512VL")])
@@ -17872,10 +17876,10 @@
   [(set (match_operand:VI 0 "register_operand" "=x,v")
 	(vec_duplicate:VI
 	  (vec_select:<ssescalarmode>
-	    (match_operand:<ssexmmmode> 1 "nonimmediate_operand" "xm,vm")
+	    (match_operand:<ssexmmmode> 1 "register_operand" "x,v")
 	    (parallel [(const_int 0)]))))]
   "TARGET_AVX2"
-  "vpbroadcast<ssemodesuffix>\t{%1, %0|%0, %<iptr>1}"
+  "vpbroadcast<ssemodesuffix>\t{%1, %0|%0, %1}"
   [(set_attr "isa" "*,<pbroadcast_evex_isa>")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
@@ -18058,11 +18062,9 @@
    (set_attr "mode" "OI")])
 
 (define_insn "<avx512>_vec_dup<mode><mask_name>"
-  [(set (match_operand:V48_AVX512VL 0 "register_operand" "=v")
-	(vec_duplicate:V48_AVX512VL
-	  (vec_select:<ssescalarmode>
-	    (match_operand:<ssexmmmode> 1 "nonimmediate_operand" "vm")
-	    (parallel [(const_int 0)]))))]
+  [(set (match_operand:VF48_AVX512VL 0 "register_operand" "=v")
+	(vec_duplicate:VF48_AVX512VL
+	  (match_operand:<ssescalarmode> 1 "nonimmediate_operand" "vm")))]
   "TARGET_AVX512F"
 {
   /*  There is no DF broadcast (in AVX-512*) to 128b register.
@@ -18077,13 +18079,35 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "<avx512>_vec_dup<mode><mask_name>"
+  [(set (match_operand:VI48_AVX512VL 0 "register_operand" "=v")
+	(vec_duplicate:VI48_AVX512VL
+	  (vec_select:<ssescalarmode>
+	    (match_operand:<ssexmmmode> 1 "register_operand" "v")
+	    (parallel [(const_int 0)]))))]
+  "TARGET_AVX512F"
+  "v<sseintprefix>broadcast<bcstscalarsuff>\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
+  [(set_attr "type" "ssemov")
+   (set_attr "prefix" "evex")
+   (set_attr "mode" "<sseinsnmode>")])
+
+(define_insn "<avx512>_vec_dup<mode><mask_name>_1"
+  [(set (match_operand:VI48_AVX512VL 0 "register_operand" "=v")
+	(vec_duplicate:VI48_AVX512VL
+	  (match_operand:<ssescalarmode> 1 "memory_operand" "m")))]
+  "TARGET_AVX512F"
+  "v<sseintprefix>broadcast<bcstscalarsuff>\t{%1, %0<mask_operand2>|%0<mask_operand2>, %<iptr>1}"
+  [(set_attr "type" "ssemov")
+   (set_attr "prefix" "evex")
+   (set_attr "mode" "<sseinsnmode>")])
+
+(define_insn "<avx512>_vec_dup<mode><mask_name>"
   [(set (match_operand:VI12_AVX512VL 0 "register_operand" "=v")
 	(vec_duplicate:VI12_AVX512VL
 	  (vec_select:<ssescalarmode>
-	    (match_operand:<ssexmmmode> 1 "nonimmediate_operand" "vm")
+	    (match_operand:<ssexmmmode> 1 "register_operand" "v")
 	    (parallel [(const_int 0)]))))]
   "TARGET_AVX512BW"
-  "vpbroadcast<bcstscalarsuff>\t{%1, %0<mask_operand2>|%0<mask_operand2>, %<iptr>1}"
+  "vpbroadcast<bcstscalarsuff>\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "type" "ssemov")
    (set_attr "prefix" "evex")
    (set_attr "mode" "<sseinsnmode>")])
@@ -18125,8 +18149,8 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "<mask_codefor><avx512>_vec_dup_gpr<mode><mask_name>"
-  [(set (match_operand:V48_AVX512VL 0 "register_operand" "=v,v")
-	(vec_duplicate:V48_AVX512VL
+  [(set (match_operand:VI48_AVX512VL 0 "register_operand" "=v,v")
+	(vec_duplicate:VI48_AVX512VL
 	  (match_operand:<ssescalarmode> 1 "nonimmediate_operand" "vm,r")))]
   "TARGET_AVX512F"
   "v<sseintprefix>broadcast<bcstscalarsuff>\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
@@ -18135,8 +18159,7 @@
    (set_attr "mode" "<sseinsnmode>")
    (set (attr "enabled")
      (if_then_else (eq_attr "alternative" "1")
-	(symbol_ref "GET_MODE_CLASS (<ssescalarmode>mode) == MODE_INT
-		     && (<ssescalarmode>mode != DImode || TARGET_64BIT)")
+	(symbol_ref "<ssescalarmode>mode != DImode || TARGET_64BIT")
 	(const_int 1)))])
 
 (define_insn "vec_dupv4sf"
