@@ -45963,6 +45963,7 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	{
 	  /* Use vpbroadcast{b,w,d}.  */
 	  rtx (*gen) (rtx, rtx) = NULL;
+	  machine_mode scalar_mode = VOIDmode;
 	  switch (d->vmode)
 	    {
 	    case E_V64QImode:
@@ -45993,15 +45994,18 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	      gen = gen_avx2_pbroadcastv8hi;
 	      break;
 	    case E_V16SFmode:
+	      scalar_mode = SFmode;
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv16sf_1;
+		gen = gen_avx512f_vec_dupv16sf;
 	      break;
 	    case E_V8SFmode:
-	      gen = gen_avx2_vec_dupv8sf_1;
+	      scalar_mode = SFmode;
+	      gen = gen_vec_dupv8sf;
 	      break;
 	    case E_V8DFmode:
+	      scalar_mode = DFmode;
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv8df_1;
+		gen = gen_avx512f_vec_dupv8df;
 	      break;
 	    case E_V8DImode:
 	      if (TARGET_AVX512F)
@@ -46013,7 +46017,23 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	  if (gen != NULL)
 	    {
 	      if (!d->testing_p)
-		emit_insn (gen (d->target, d->op0));
+		{
+		  if (scalar_mode == VOIDmode)
+		    emit_insn (gen (d->target, d->op0));
+		  else
+		    {
+		      rtx op = d->op0;
+		      unsigned int oppos = 0;
+		      if (SUBREG_P (op))
+			{
+			  op = SUBREG_REG (op);
+			  oppos = SUBREG_BYTE (op);
+			}
+		      emit_insn (gen (d->target,
+				      gen_rtx_SUBREG (scalar_mode,
+						      op, oppos)));
+		    }
+		}
 	      return true;
 	    }
 	}

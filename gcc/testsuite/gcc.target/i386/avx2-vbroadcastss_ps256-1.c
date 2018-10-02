@@ -1,6 +1,7 @@
 /* { dg-do compile } */
 /* { dg-options "-mavx2 -O2" } */
-/* { dg-final { scan-assembler "vbroadcastss\[ \\t\]+\[^\n\]*%xmm\[0-9\]" } } */
+/* { dg-final { scan-assembler "vbroadcastss\[ \\t\]+\[^\n\]*%ymm\[0-9\]" } } */
+/* { dg-final { scan-assembler-not "vmovaps\[\t \]*\[^,\]*,%xmm\[0-9\]" } } */
 
 #include <immintrin.h>
 
