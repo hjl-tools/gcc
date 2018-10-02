@@ -1048,6 +1048,19 @@
   (ior (match_operand 0 "nonimmediate_operand")
        (match_code "const_vector")))
 
+;; Return true when OP is CONST_VECTOR which can be represented by
+;; VEC_DUPLICATE.
+(define_predicate "const_vector_duplicate_operand"
+  (and (match_code "const_vector")
+       (match_test "!standard_sse_constant_p (op, mode)"))
+{
+  int i, nunits = GET_MODE_NUNITS (mode);
+  for (i = 1; i < nunits; i++)
+    if (CONST_VECTOR_ELT (op, i) != CONST_VECTOR_ELT (op, 0))
+     return false;
+  return true;
+})
+
 ;; Return true when OP is nonimmediate or standard SSE constant.
 (define_predicate "nonimmediate_or_sse_const_operand"
   (ior (match_operand 0 "nonimmediate_operand")

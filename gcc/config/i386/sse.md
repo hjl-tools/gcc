@@ -18078,6 +18078,19 @@
    (set_attr "prefix" "evex")
    (set_attr "mode" "<sseinsnmode>")])
 
+(define_insn_and_split "*const_vec_dup<mode>"
+  [(set (match_operand:V48_AVX512VL 0 "register_operand")
+	(match_operand:V48_AVX512VL 1 "const_vector_duplicate_operand"))]
+  "TARGET_AVX512F && can_create_pseudo_p ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 0) (vec_duplicate:V48_AVX512VL (match_dup 1)))]
+{
+  rtx val = CONST_VECTOR_ELT (operands[1], 0);
+  machine_mode scalar_mode = GET_MODE_INNER (<MODE>mode);
+  operands[1] = validize_mem (force_const_mem (scalar_mode, val));
+})
+
 (define_insn "<avx512>_vec_dup<mode><mask_name>"
   [(set (match_operand:VI48_AVX512VL 0 "register_operand" "=v")
 	(vec_duplicate:VI48_AVX512VL

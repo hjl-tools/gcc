@@ -33832,6 +33832,216 @@ ix86_expand_unop_vec_merge_builtin (enum insn_code icode, tree exp,
   return target;
 }
 
+/* Subroutine of ix86_expand_args_builtin to take care of vec_dup with
+   const.  */
+
+static rtx
+ix86_expand_vec_dup_const_builtin (enum insn_code icode,
+				   const struct insn_data_d *insn_p,
+				   tree exp,
+				   rtx target)
+{
+  rtx pat;
+  tree arg0 = CALL_EXPR_ARG (exp, 0);
+  tree arg1 = CALL_EXPR_ARG (exp, 1);
+  tree arg2 = CALL_EXPR_ARG (exp, 2);
+  rtx op0 = expand_normal (arg0);
+  rtx op1 = expand_normal (arg1);
+  rtx op2 = expand_normal (arg2);
+  machine_mode tmode = insn_data[icode].operand[0].mode;
+  bool const_vec_dup = false;
+  bool all_1s_mask = false;
+
+  switch (icode)
+    {
+    case CODE_FOR_avx512f_vec_dupv16sf_mask:
+    case CODE_FOR_avx512f_vec_dupv8df_mask:
+    case CODE_FOR_avx512vl_vec_dupv8sf_mask:
+    case CODE_FOR_avx512vl_vec_dupv4df_mask:
+    case CODE_FOR_avx512vl_vec_dupv4sf_mask:
+    case CODE_FOR_avx512vl_vec_dupv2df_mask:
+    case CODE_FOR_avx512f_vec_dupv16si_mask:
+    case CODE_FOR_avx512f_vec_dupv8di_mask:
+    case CODE_FOR_avx512vl_vec_dupv8si_mask:
+    case CODE_FOR_avx512vl_vec_dupv4si_mask:
+    case CODE_FOR_avx512vl_vec_dupv4di_mask:
+    case CODE_FOR_avx512vl_vec_dupv2di_mask:
+      if (GET_CODE (op0) == CONST_VECTOR)
+	{
+	  const_vec_dup = true;
+	  op0 = CONST_VECTOR_ELT (op0, 0);
+	}
+      break;
+    case CODE_FOR_avx512f_vec_dup_gprv16si_mask:
+    case CODE_FOR_avx512f_vec_dup_gprv8di_mask:
+    case CODE_FOR_avx512vl_vec_dup_gprv8si_mask:
+    case CODE_FOR_avx512vl_vec_dup_gprv4si_mask:
+    case CODE_FOR_avx512vl_vec_dup_gprv4di_mask:
+    case CODE_FOR_avx512vl_vec_dup_gprv2di_mask:
+      if (CONST_INT_P (op0))
+	const_vec_dup = true;
+      break;
+    default:
+      gcc_unreachable ();
+    }
+
+  if (const_vec_dup)
+    {
+      op0 = force_const_mem (GET_MODE_INNER (tmode), op0);
+      op0 = validize_mem (op0);
+
+      if (CONST_INT_P (op2))
+	{
+	  unsigned int nunits = GET_MODE_NUNITS (tmode);
+	  if (INTVAL (op2) == (1 << nunits) - 1)
+	    all_1s_mask = true;
+	}
+    }
+
+  unsigned int num_memory = 0;
+
+  if (optimize
+      || !target
+      || GET_MODE (target) != tmode
+      || !insn_data[icode].operand[0].predicate (target, tmode))
+    target = gen_reg_rtx (tmode);
+  else if (memory_operand (target, tmode))
+    num_memory++;
+
+  rtx ops[3] = { op0, op1, op2 };
+
+  unsigned int i;
+  for (i = 0; i < 3; i++)
+    {
+      rtx op = ops[i];
+      machine_mode mode = insn_p->operand[i + 1].mode;
+
+      if (VECTOR_MODE_P (mode))
+	op = safe_vector_operand (op, mode);
+
+      /* If we aren't optimizing, only allow one memory operand to
+	 be generated.  */
+      if (memory_operand (op, mode))
+	num_memory++;
+
+      op = fixup_modeless_constant (op, mode);
+
+      bool no_copy = false;
+
+      if (const_vec_dup)
+	{
+	  if (i == 0)
+	      no_copy = true;
+	  else if (i == 2 && all_1s_mask)
+	    no_copy = true;
+	}
+
+      if (!no_copy)
+	{
+	  if (GET_MODE (op) == mode || GET_MODE (op) == VOIDmode)
+	    {
+	      if (optimize
+		  || num_memory > 1
+		  || !insn_p->operand[i + 1].predicate (op, mode))
+		op = copy_to_mode_reg (mode, op);
+	    }
+	  else
+	    {
+	      op = copy_to_reg (op);
+	      op = lowpart_subreg (mode, op, GET_MODE (op));
+	    }
+	}
+
+      ops[i] = op;
+    }
+
+  if (const_vec_dup)
+    {
+      switch (icode)
+	{
+	case CODE_FOR_avx512f_vec_dupv16sf_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512f_vec_dupv16sf;
+	  break;
+	case CODE_FOR_avx512f_vec_dupv8df_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512f_vec_dupv8df;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv8sf_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv8sf;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv4df_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv4df;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv4sf_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv4sf;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv2df_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv2df;
+	  break;
+	case CODE_FOR_avx512f_vec_dupv16si_mask:
+	case CODE_FOR_avx512f_vec_dup_gprv16si_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512f_vec_dupv16si_1;
+	  else
+	    icode = CODE_FOR_avx512f_vec_dupv16si_mask_1;
+	  break;
+	case CODE_FOR_avx512f_vec_dupv8di_mask:
+	case CODE_FOR_avx512f_vec_dup_gprv8di_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512f_vec_dupv8di_1;
+	  else
+	    icode = CODE_FOR_avx512f_vec_dupv8di_mask_1;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv8si_mask:
+	case CODE_FOR_avx512vl_vec_dup_gprv8si_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv8si_1;
+	  else
+	    icode = CODE_FOR_avx512vl_vec_dupv8si_mask_1;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv4si_mask:
+	case CODE_FOR_avx512vl_vec_dup_gprv4si_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv4si_1;
+	  else
+	    icode = CODE_FOR_avx512vl_vec_dupv4si_mask_1;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv4di_mask:
+	case CODE_FOR_avx512vl_vec_dup_gprv4di_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv4di_1;
+	  else
+	    icode = CODE_FOR_avx512vl_vec_dupv4di_mask_1;
+	  break;
+	case CODE_FOR_avx512vl_vec_dupv2di_mask:
+	case CODE_FOR_avx512vl_vec_dup_gprv2di_mask:
+	  if (all_1s_mask)
+	    icode = CODE_FOR_avx512vl_vec_dupv2di_1;
+	  else
+	    icode = CODE_FOR_avx512vl_vec_dupv2di_mask_1;
+	  break;
+	default:
+	  gcc_unreachable ();
+	}
+      if (all_1s_mask)
+	pat = GEN_FCN (icode) (target, ops[0]);
+      else
+	pat = GEN_FCN (icode) (target, ops[0], ops[1], ops[2]);
+    }
+  else
+    pat = GEN_FCN (icode) (target, ops[0], ops[1], ops[2]);
+
+  if (! pat)
+    return 0;
+  emit_insn (pat);
+  return target;
+}
+
 /* Subroutine of ix86_expand_builtin to take care of comparison insns.  */
 
 static rtx
@@ -34715,6 +34925,25 @@ ix86_expand_args_builtin (const struct builtin_description *d,
     case V8HI_FTYPE_V8HI_V8HI_V8HI:
       nargs = 3;
       break;
+    case V8DF_FTYPE_V2DF_V8DF_UQI_VEC_DUP_CONST:
+    case V16SF_FTYPE_V4SF_V16SF_UHI_VEC_DUP_CONST:
+    case V16SI_FTYPE_V4SI_V16SI_UHI_VEC_DUP_CONST:
+    case V16SI_FTYPE_SI_V16SI_UHI_VEC_DUP_CONST:
+    case V8DI_FTYPE_V2DI_V8DI_UQI_VEC_DUP_CONST:
+    case V8DI_FTYPE_DI_V8DI_UQI_VEC_DUP_CONST:
+    case V8SI_FTYPE_V4SI_V8SI_UQI_VEC_DUP_CONST:
+    case V8SI_FTYPE_SI_V8SI_UQI_VEC_DUP_CONST:
+    case V4SI_FTYPE_V4SI_V4SI_UQI_VEC_DUP_CONST:
+    case V4SI_FTYPE_SI_V4SI_UQI_VEC_DUP_CONST:
+    case V4DI_FTYPE_V2DI_V4DI_UQI_VEC_DUP_CONST:
+    case V4DI_FTYPE_DI_V4DI_UQI_VEC_DUP_CONST:
+    case V2DI_FTYPE_V2DI_V2DI_UQI_VEC_DUP_CONST:
+    case V2DI_FTYPE_DI_V2DI_UQI_VEC_DUP_CONST:
+    case V8SF_FTYPE_V4SF_V8SF_UQI_VEC_DUP_CONST:
+    case V4SF_FTYPE_V4SF_V4SF_UQI_VEC_DUP_CONST:
+    case V4DF_FTYPE_V2DF_V4DF_UQI_VEC_DUP_CONST:
+      return ix86_expand_vec_dup_const_builtin (icode, insn_p,
+						exp, target);
     case V32QI_FTYPE_V32QI_V32QI_INT:
     case V16HI_FTYPE_V16HI_V16HI_INT:
     case V16QI_FTYPE_V16QI_V16QI_INT:
