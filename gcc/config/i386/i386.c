@@ -45963,28 +45963,41 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	{
 	  /* Use vpbroadcast{b,w,d}.  */
 	  rtx (*gen) (rtx, rtx) = NULL;
+	  machine_mode smode = VOIDmode;
 	  switch (d->vmode)
 	    {
 	    case E_V64QImode:
 	      if (TARGET_AVX512BW)
-		gen = gen_avx512bw_vec_dupv64qi_1;
+		{
+		  smode = V16QImode;
+		  gen = gen_avx512bw_vec_dupv64qi;
+		}
 	      break;
 	    case E_V32QImode:
-	      gen = gen_avx2_pbroadcastv32qi_1;
+	      smode = V16QImode;
+	      gen = gen_avx2_pbroadcastv32qi;
 	      break;
 	    case E_V32HImode:
 	      if (TARGET_AVX512BW)
-		gen = gen_avx512bw_vec_dupv32hi_1;
+		{
+		  smode = V8HImode;
+		  gen = gen_avx512bw_vec_dupv32hi;
+		}
 	      break;
 	    case E_V16HImode:
-	      gen = gen_avx2_pbroadcastv16hi_1;
+	      smode = V8HImode;
+	      gen = gen_avx2_pbroadcastv16hi;
 	      break;
 	    case E_V16SImode:
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv16si_1;
+		{
+		  smode = V4SImode;
+		  gen = gen_avx512f_vec_dupv16si;
+		}
 	      break;
 	    case E_V8SImode:
-	      gen = gen_avx2_pbroadcastv8si_1;
+	      smode = V4SImode;
+	      gen = gen_avx2_pbroadcastv8si;
 	      break;
 	    case E_V16QImode:
 	      gen = gen_avx2_pbroadcastv16qi;
@@ -45993,19 +46006,25 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	      gen = gen_avx2_pbroadcastv8hi;
 	      break;
 	    case E_V16SFmode:
+	      smode = SFmode;
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv16sf_1;
+		gen = gen_avx512f_vec_dupv16sf;
 	      break;
 	    case E_V8SFmode:
-	      gen = gen_avx2_vec_dupv8sf_1;
+	      smode = SFmode;
+	      gen = gen_vec_dupv8sf;
 	      break;
 	    case E_V8DFmode:
+	      smode = DFmode;
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv8df_1;
+		gen = gen_avx512f_vec_dupv8df;
 	      break;
 	    case E_V8DImode:
 	      if (TARGET_AVX512F)
-		gen = gen_avx512f_vec_dupv8di_1;
+		{
+		  smode = V2DImode;
+		  gen = gen_avx512f_vec_dupv8di;
+		}
 	      break;
 	    /* For other modes prefer other shuffles this function creates.  */
 	    default: break;
@@ -46013,7 +46032,23 @@ expand_vec_perm_1 (struct expand_vec_perm_d *d)
 	  if (gen != NULL)
 	    {
 	      if (!d->testing_p)
-		emit_insn (gen (d->target, d->op0));
+		{
+		  if (smode == VOIDmode)
+		    emit_insn (gen (d->target, d->op0));
+		  else
+		    {
+		      rtx op = d->op0;
+		      unsigned int oppos = 0;
+		      if (SUBREG_P (op))
+			{
+			  op = SUBREG_REG (op);
+			  oppos = SUBREG_BYTE (op);
+			}
+		      emit_insn (gen (d->target,
+				      gen_rtx_SUBREG (smode, op,
+						      oppos)));
+		    }
+		}
 	      return true;
 	    }
 	}
