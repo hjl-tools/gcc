@@ -11164,8 +11164,13 @@ ix86_compute_frame_layout (void)
   unsigned HOST_WIDE_INT stack_alignment_needed;
   HOST_WIDE_INT offset;
   unsigned HOST_WIDE_INT preferred_alignment;
-  HOST_WIDE_INT size = get_frame_size ();
+  HOST_WIDE_INT size;
   HOST_WIDE_INT to_allocate;
+
+  if (cfun->machine->no_stack_frame)
+    size = HOST_WIDE_INT_C (0);
+  else
+    size = get_frame_size ();
 
   /* m->call_ms2sysv is initially enabled in ix86_expand_call for all 64-bit
    * ms_abi functions that call a sysv function.  We now need to prune away
@@ -12902,6 +12907,9 @@ ix86_find_max_used_stack_alignment (unsigned int &stack_alignment,
     }
 
 done:
+  if (!require_stack_frame)
+    cfun->machine->no_stack_frame = 1;
+
   return require_stack_frame;
 }
 
