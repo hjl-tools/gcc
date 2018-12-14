@@ -12784,6 +12784,57 @@ output_probe_stack_range (rtx reg, rtx end)
   return "";
 }
 
+/* Return true if destination register of SET_BODY may reference stack.  */
+
+static bool
+ix86_stack_referenced_p (const_rtx set_body)
+{
+  rtx set_dest, set_src;
+  int i;
+
+  switch (GET_CODE (set_body))
+    {
+    case SET:
+      /* If a register is set from a stack stack address, it may be
+	 used to reference stack indirectly.  */
+      set_dest = SET_DEST (set_body);
+      if (SUBREG_P (set_dest))
+	set_dest = SUBREG_REG (set_dest);
+      if (!REG_P (set_dest) || !GENERAL_REG_P (set_dest))
+	return false;
+      set_src = SET_SRC (set_body);
+      if (address_operand (set_src, VOIDmode))
+	{
+	  struct ix86_address parts;
+	  if (!ix86_decompose_address (set_src, &parts))
+	    return false;
+	  if (parts.base)
+	    {
+	      if (SUBREG_P (parts.base))
+		parts.base = SUBREG_REG (parts.base);
+	      return (parts.base == stack_pointer_rtx
+		      || parts.base == frame_pointer_rtx);
+	    }
+	  if (parts.index)
+	    {
+	      if (SUBREG_P (parts.index))
+		parts.index = SUBREG_REG (parts.index);
+	      return (parts.index == stack_pointer_rtx
+		      || parts.index == frame_pointer_rtx);
+	    }
+	}
+      break;
+    case PARALLEL:
+      for (i = XVECLEN (set_body, 0) - 1; i >= 0; i--)
+	if (ix86_stack_referenced_p (XVECEXP (set_body, 0, i)))
+	  return true;
+      /* FALLTHROUGH */
+    default:
+      break;
+    }
+  return false;
+}
+
 /* Return true if stack frame is required.  Update STACK_ALIGNMENT
    to the largest alignment, in bits, of stack slot used if stack
    frame is required and CHECK_STACK_SLOT is true.  */
@@ -12802,8 +12853,13 @@ ix86_find_max_used_stack_alignment (unsigned int &stack_alignment,
   add_to_hard_reg_set (&set_up_by_prologue, Pmode,
 		       HARD_FRAME_POINTER_REGNUM);
 
-  /* The preferred stack alignment is the minimum stack alignment.  */
-  if (stack_alignment > crtl->preferred_stack_boundary)
+  /* Save the original stack alignment.  */
+  unsigned int original_stack_alignment = stack_alignment;
+
+  /* The preferred stack alignment is the minimum stack alignment.
+     Update stack alignment only if we check stack alignment.  */
+  if (check_stack_slot
+      && stack_alignment > crtl->preferred_stack_boundary)
     stack_alignment = crtl->preferred_stack_boundary;
 
   bool require_stack_frame = false;
@@ -12817,6 +12873,16 @@ ix86_find_max_used_stack_alignment (unsigned int &stack_alignment,
 				       set_up_by_prologue))
 	  {
 	    require_stack_frame = true;
+
+	    if (ix86_stack_referenced_p (PATTERN (insn)))
+	      {
+		/* There's no guarantee that we're visiting the
+		   blocks in execution order.  If there may be
+		   indirect stack references, stop and restore
+		   the original stack alignment.  */
+		stack_alignment = original_stack_alignment;
+		goto done;
+	      }
 
 	    if (check_stack_slot)
 	      {
@@ -12834,9 +12900,15 @@ ix86_find_max_used_stack_alignment (unsigned int &stack_alignment,
 			stack_alignment = alignment;
 		    }
 	      }
+	    else
+	      {
+		/* We are done.  */
+		goto done;
+	      }
 	  }
     }
 
+done:
   return require_stack_frame;
 }
 
