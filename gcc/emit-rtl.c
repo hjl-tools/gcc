@@ -1166,7 +1166,7 @@ gen_reg_rtx (machine_mode mode)
 	crtl->stack_alignment_estimated = min_align;
     }
 
-  if (generating_concat_p
+  if (targetm.gen_reg_rtx_complex_concat_p (mode)
       && (GET_MODE_CLASS (mode) == MODE_COMPLEX_FLOAT
 	  || GET_MODE_CLASS (mode) == MODE_COMPLEX_INT))
     {

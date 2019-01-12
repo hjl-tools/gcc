@@ -401,6 +401,14 @@ default_translate_mode_attribute (machine_mode mode)
   return mode;
 }
 
+/* The default implementation of TARGET_GEN_REG_RTX_COMPLEX_CONCAT_P.  */
+
+bool
+default_gen_reg_rtx_complex_concat_p (machine_mode)
+{
+  return generating_concat_p;
+}
+
 /* True if MODE is valid for the target.  By "valid", we mean able to
    be manipulated in non-trivial ways.  In particular, this means all
    the arithmetic is supported.

@@ -7927,9 +7927,8 @@ construct_container (machine_mode mode, machine_mode orig_mode,
 	  return NULL;
 	}
 
-  /* First construct simple cases.  Avoid SCmode, since we want to use
-     single register to pass this type.  */
-  if (n == 1 && mode != SCmode)
+  /* First construct simple cases.  */
+  if (n == 1)
     switch (regclass[0])
       {
       case X86_64_INTEGER_CLASS:
@@ -40127,6 +40126,10 @@ ix86_hard_regno_mode_ok (unsigned int regno, machine_mode mode)
 		&& VALID_MASK_AVX512BW_MODE (mode)));
   if (SSE_REGNO_P (regno))
     {
+      /* Allow SCmode in SSE registers for 64-bit mode.  */
+      if (mode == SCmode && TARGET_64BIT && TARGET_SSE)
+	return true;
+
       /* We implement the move patterns for all vector modes into and
 	 out of SSE registers, even when no operation instructions
 	 are available.  */
@@ -44136,6 +44139,16 @@ ix86_expand_reduc (rtx (*fn) (rtx, rtx, rtx), rtx dest, rtx in)
     }
 }
 
+/* Target hook for gen_reg_rtx_complex_concat_p.  */
+
+static bool
+ix86_gen_reg_rtx_complex_concat_p (machine_mode mode)
+{
+  if (mode == SCmode && TARGET_64BIT && TARGET_SSE)
+    return false;
+  return default_gen_reg_rtx_complex_concat_p (mode);
+}
+
 /* Target hook for scalar_mode_supported_p.  */
 static bool
 ix86_scalar_mode_supported_p (scalar_mode mode)
@@ -51654,6 +51667,10 @@ ix86_run_selftests (void)
 
 #undef TARGET_GIMPLIFY_VA_ARG_EXPR
 #define TARGET_GIMPLIFY_VA_ARG_EXPR ix86_gimplify_va_arg
+
+#undef TARGET_GEN_REG_RTX_COMPLEX_CONCAT_P
+#define TARGET_GEN_REG_RTX_COMPLEX_CONCAT_P \
+  ix86_gen_reg_rtx_complex_concat_p
 
 #undef TARGET_SCALAR_MODE_SUPPORTED_P
 #define TARGET_SCALAR_MODE_SUPPORTED_P ix86_scalar_mode_supported_p

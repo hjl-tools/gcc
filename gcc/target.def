@@ -3332,6 +3332,15 @@ The default version of the hook returns that mode that was passed in.",
  machine_mode, (machine_mode mode),
  default_translate_mode_attribute)
 
+/* True if a CONCAT of two pseudos should be used when generating
+   complex MODE REG rtx for the target.  */
+DEFHOOK
+(gen_reg_rtx_complex_concat_p,
+ "Define this to return nonzero if a @code{concat} two pseudos\n\
+should be used when generating complex @var{mode} @code{reg} RTX.",
+ bool, (machine_mode mode),
+ default_gen_reg_rtx_complex_concat_p)
+
 /* True if MODE is valid for the target.  By "valid", we mean able to
    be manipulated in non-trivial ways.  In particular, this means all
    the arithmetic is supported.  */

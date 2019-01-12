@@ -4283,6 +4283,11 @@ translate machine_mode @var{mode} to another mode.  For example, rs6000's
 The default version of the hook returns that mode that was passed in.
 @end deftypefn
 
+@deftypefn {Target Hook} bool TARGET_GEN_REG_RTX_COMPLEX_CONCAT_P (machine_mode @var{mode})
+Define this to return nonzero if a @code{concat} two pseudos
+should be used when generating complex @var{mode} @code{reg} RTX.
+@end deftypefn
+
 @deftypefn {Target Hook} bool TARGET_SCALAR_MODE_SUPPORTED_P (scalar_mode @var{mode})
 Define this to return nonzero if the port is prepared to handle
 insns involving scalar mode @var{mode}.  For a scalar mode to be
